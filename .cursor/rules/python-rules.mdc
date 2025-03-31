@@ -1,0 +1,16 @@
+---
+description: 
+globs: *.py
+alwaysApply: false
+---
+
+# Your rule content
+
+## Comments
+
+- All comments should use English
+- Do not use inline commnet, all the comment should be above of the code block
+
+## Code Formatting
+
+- Limit each line of code to a maximum of 73 characters. For statements exceeding this length, use appropriate line breaks and indentation to maintain code readability.
