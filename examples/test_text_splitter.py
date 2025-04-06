@@ -45,6 +45,7 @@ language modeling.
         print(f"\nParagraph {i}:")
         print(f"Content: {para.content}")
         print(f"Token count: {para.token_count}")
+        print(f"Sentences count: {len(para.sentences)}")
 
     # Split the Chinese text into paragraphs
     paragraphs_gpt4_zh = splitter_gpt4.split_text(text_zh)
@@ -55,6 +56,7 @@ language modeling.
         print(f"\nParagraph {i}:")
         print(f"Content: {para.content}")
         print(f"Token count: {para.token_count}")
+        print(f"Sentences count: {len(para.sentences)}")
 
 
 if __name__ == "__main__":

@@ -43,17 +43,24 @@ SENTENCE_ENDINGS = ['.', '!', '?', '。', '！', '？']
 logger = logging.getLogger(__name__)
 
 class Paragraph:
-    """Represents a paragraph of text after splitting."""
-    def __init__(self, content: str, token_count: int):
-        # The actual content of the paragraph
+    """
+    Represents a paragraph of text after splitting.
+
+    Attributes:
+        content: The actual content of the paragraph
+        token_count: Number of tokens in the paragraph
+        sentences: List of sentences in the paragraph
+    """
+    def __init__(self, content: str, token_count: int, sentences: List[str]):
         self.content = content
-        # Number of tokens in the paragraph
         self.token_count = token_count
+        self.sentences = sentences
 
     def __repr__(self):
         return (
             f"Paragraph(content={self.content[:50]}..., "
-            f"token_count={self.token_count})"
+            f"token_count={self.token_count}, "
+            f"sentences_count={len(self.sentences)})"
         )
 
 
@@ -302,11 +309,20 @@ class TokenSplitter:
             total_tokens = self._count_tokens(text)
             logger.info(f"Input text has {total_tokens} tokens total")
 
+            # Get sentences for the text
+            if language == 'zh':
+                sentences = self._split_chinese_text(text)
+            else:
+                if self.nlp is None:
+                    self._load_language_model(language)
+                doc = self.nlp(text)
+                sentences = [sent.text.strip() for sent in doc.sents]
+
             if total_tokens <= self.max_tokens:
                 logger.info(
                     "Text fits within max token limit, no splitting needed"
                 )
-                return [Paragraph(text, total_tokens)]
+                return [Paragraph(text, total_tokens, sentences)]
 
             # Create splitter with appropriate separators
             splitter = self._create_splitter(language)
@@ -316,6 +332,7 @@ class TokenSplitter:
             # Process chunks into paragraphs
             paragraphs = []
             current_chunk = []
+            current_sentences = []
             current_count = 0
 
             for chunk in chunks:
@@ -323,51 +340,40 @@ class TokenSplitter:
                 if not chunk_text:
                     continue
 
-                chunk_tokens = self._count_tokens(chunk_text)
-                logger.debug(f"Processing chunk with {chunk_tokens} tokens")
-
-                # If chunk is within token limit, add it directly
-                if chunk_tokens <= self.max_tokens:
-                    paragraphs.append(Paragraph(chunk_text, chunk_tokens))
-                    continue
-
-                # For chunks that exceed max_tokens, split further if needed
-                if language == 'zh':
-                    sentences = self._split_chinese_text(chunk_text)
-                    sentence_joiner = ""
-                else:
-                    if self.nlp is None:
-                        self._load_language_model(language)
-                    doc = self.nlp(chunk_text)
-                    sentences = [sent.text.strip() for sent in doc.sents]
-                    sentence_joiner = " "
-
-                logger.debug(f"Split chunk into {len(sentences)} sentences")
-
-                # Process sentences in the chunk
+                # Process sentences
                 for sentence in sentences:
                     sentence_tokens = self._count_tokens(sentence)
 
                     if current_count + sentence_tokens <= self.max_tokens:
                         current_chunk.append(sentence)
+                        current_sentences.append(sentence)
                         current_count += sentence_tokens
                     else:
                         # Save current chunk if it exists
                         if current_chunk:
-                            combined = sentence_joiner.join(current_chunk)
-                            paragraphs.append(
-                                Paragraph(combined, current_count)
-                            )
+                            combined = (
+                                " " if language != 'zh' else ""
+                            ).join(current_chunk)
+                            paragraphs.append(Paragraph(
+                                combined,
+                                current_count,
+                                current_sentences
+                            ))
                         # Start new chunk
                         current_chunk = [sentence]
+                        current_sentences = [sentence]
                         current_count = sentence_tokens
 
-                # Add remaining sentences from this chunk
-                if current_chunk:
-                    combined = sentence_joiner.join(current_chunk)
-                    paragraphs.append(Paragraph(combined, current_count))
-                    current_chunk = []
-                    current_count = 0
+            # Add remaining sentences
+            if current_chunk:
+                combined = (
+                    " " if language != 'zh' else ""
+                ).join(current_chunk)
+                paragraphs.append(Paragraph(
+                    combined,
+                    current_count,
+                    current_sentences
+                ))
 
             logger.info("Text splitting complete. "
                         f"Created {len(paragraphs)} paragraphs")

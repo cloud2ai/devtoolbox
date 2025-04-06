@@ -9,7 +9,7 @@ name = "devtoolbox"
 version = "0.1.0"
 description = "Developer toolbox with text processing capabilities"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Ray Sun", email = "xiaoquqi@gmail.com"}
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -17,39 +17,43 @@ requires-python = ">=3.8"
 
 # Core dependencies
 dependencies = [
-    "openai>=1.0.0",
-    "jira>=3.5.0",
-    "markdown>=3.4.0",
+    "openai>=1.12.0",
+    "jira>=3.5.1",
+    "markdown>=3.5.1",
     "python-gitlab>=3.15.0",
-    "pypandoc>=1.11.0",
-    "requests>=2.28.0",
+    "pypandoc>=1.12",
+    "requests>=2.31.0",
     "pypinyin>=0.48.0",
     "retry>=0.9.2",
-    "Pillow>=9.4.0",
-    "spacy>=3.0.0",
-    "langchain>=0.0.1",
-    "tiktoken>=0.0.1",
-    "transformers>=4.0.0",
+    "Pillow>=10.2.0",
+    "spacy>=3.7.2",
+    "langchain>=0.1.0",
+    "tiktoken>=0.5.2",
+    "transformers>=4.36.2",
     "langdetect>=1.0.9",
+    "pydub>=0.25.1",
+    "cairosvg>=2.7.1",
+    "boto3>=1.34.34",
+    "beautifulsoup4>=4.12.2"
 ]
 
 # Package configuration
 [tool.setuptools]
 packages = ["devtoolbox"]
 
-# Command line registration (currently commented out)
-#[tool.setuptools.entry_points]
-#console_scripts = [
-#    "devtoolbox-hello = devtoolbox.cli:hello"
-#]
-
-# Optional dependencies for different use cases
+# Optional dependencies
 [project.optional-dependencies]
 dev = [
-    "pytest>=6.0",
-    "black>=21.5b2",
+    "pytest>=8.0.0",
+    "black>=24.1.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "isort>=5.13.0"
 ]
-docs = ["mkdocs>=1.4.2", "mkdocstrings>=0.21.2"]
+docs = [
+    "mkdocs>=1.5.3",
+    "mkdocstrings>=0.24.0"
+]
 
 [project.scripts]
 devtoolbox-setup-nlp = "devtoolbox.cmd.setup_nlp:download_spacy_models"
