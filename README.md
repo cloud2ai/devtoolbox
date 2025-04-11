@@ -12,19 +12,175 @@ For nearly 10 years, I had been working in software development at the infrastru
 
 During this journey, I also gained a growing presence on multiple platforms. **I surpassed 10,000 followers on Douyin and Toutiao, and over 6,000 followers on CSDN.** My explorations in AI applications and automated content generation attracted considerable attention. These achievements reinforced my belief that in the AI era, success depends on finding real-world applications and monetization strategies.
 
-However, as I worked on more and more projects, I realized that I hadn't properly organized or abstracted my learnings. That’s why I now want to develop a new foundational AI application library—one that consolidates my technical experience and provides a more efficient foundation for future AI development.
+However, as I worked on more and more projects, I realized that I hadn't properly organized or abstracted my learnings. That's why I now want to develop a new foundational AI application library—one that consolidates my technical experience and provides a more efficient foundation for future AI development.
 
-在两年前的 2023 年 12 月，ChatGPT 横空出世，一下子闯入了我的视野。起初，我以为这只是现有 AI 技术的优化升级版，但在亲身体验后，我立刻意识到——这是一款颠覆性的产品。甚至，我认为这或许是我们 80 后最后一次能够抓住的创业机会。
+## Features
 
-那一天的情景我依然记忆犹新。那是一个周五，恰好也是我第一次感染新冠的日子。上午，我已经感觉到身体有些异样，但仍然坚持完成了工作。中午吃了退烧药小憩片刻后，下午 3 点参加了公司的周例会。就在这次例会上，我第一次向全体同事介绍了 ChatGPT。从那一刻起，我开始全身心投入 ChatGPT 应用的研究。
+### AI Modules
+- **LLM (Large Language Models)**
+  - OpenAI API integration
+  - Azure OpenAI integration
+  - DeepSeek API integration
+  - Unified interface for multiple LLM providers
+  - Configurable rate limiting and retry mechanisms
 
-过去近 10 年，我长期从事基础架构层的软件开发，渐渐感到倦怠。而当 ChatGPT 出现后，我毫不犹豫地选择从应用层切入。接下来的两年里，我不断尝试利用 ChatGPT 进行各种应用探索——从最早的视频翻译与配音，到自动化多模态新闻，再到后来的易经算命小程序，直至如今在公司内部推行 RAG（检索增强生成），开发了大量与 AI 应用相关的代码。
+- **Speech Processing**
+  - Azure Speech Services integration
+  - VolcEngine Speech Services integration
+  - Whisper integration
+  - Text-to-Speech (TTS) capabilities
+  - Speech-to-Text (STT) capabilities
 
-在这一过程中，我也逐渐在多个平台上积累了一定的影响力。我的 **抖音和今日头条粉丝突破 1 万**，**CSDN 关注人数超过 6000**，在 AI 技术应用、自动化内容生成等领域的探索吸引了不少的关注。这些成果不仅验证了 AI 在应用层的可行性，也让我更加坚定地认为，AI 时代的关键在于如何真正落地和变现。
+### Development Tools
+- **Jira Integration**
+  - Jira client for issue management
+  - Custom field handling
+  - Bulk operations support
 
-然而，随着项目的不断增多，我发现自己尚未对这些经验进行系统化的整理和抽象。因此，我希望开发一个全新的 AI 应用开发基础库，沉淀自己的技术积累，为后续的 AI 研发提供更高效的支持。
+- **Markdown Processing**
+  - Markdown to HTML conversion
+  - Image downloading and processing
+  - Custom formatting options
+  - Table of contents generation
 
+- **Search Engine**
+  - Custom search engine implementation
+  - Indexing and query capabilities
 
-pip install
-pip install -e .
-python -m build
+- **Text Processing**
+  - Text manipulation utilities
+  - Format conversion tools
+
+- **Image Processing**
+  - Image manipulation utilities
+  - Format conversion tools
+
+### Utility Modules
+- **Storage**
+  - Flexible storage backend support
+  - File system and cloud storage options
+
+- **Command Line Tools**
+  - CLI interface for common operations
+  - Script automation support
+
+## Usage
+
+### As a Dependency
+
+1. **Installation**
+   ```bash
+   # Install all features
+   pip install devtoolbox[all]
+   
+   # Install specific features
+   pip install devtoolbox[llm]      # LLM features only
+   pip install devtoolbox[speech]   # Speech features only
+   pip install devtoolbox[jira]     # Jira features only
+   ```
+
+2. **Basic Usage Examples**
+
+   **LLM Module**
+   ```python
+   from devtoolbox.llm import LLMService
+   from devtoolbox.llm import OpenAIConfig
+   
+   # Initialize with OpenAI
+   config = OpenAIConfig(api_key="your-api-key")
+   service = LLMService(config)
+   
+   # Generate text
+   response = service.generate("Hello, how are you?")
+   ```
+
+   **Speech Module**
+   ```python
+   from devtoolbox.speech import SpeechService
+   from devtoolbox.speech import AzureConfig
+   
+   # Initialize with Azure
+   config = AzureConfig(
+       subscription_key="your-key",
+       region="your-region"
+   )
+   service = SpeechService(config)
+   
+   # Convert text to speech
+   audio = service.text_to_speech("Hello, world!")
+   ```
+
+   **Jira Integration**
+   ```python
+   from devtoolbox import JiraClient
+   
+   client = JiraClient(
+       server="your-jira-server",
+       username="your-username",
+       api_token="your-token"
+   )
+   
+   # Create an issue
+   issue = client.create_issue(
+       project="PROJ",
+       summary="New issue",
+       description="Issue description"
+   )
+   ```
+
+3. **Configuration**
+   - All modules support configuration through environment variables
+   - See `DEVELOPER.md` for detailed configuration options
+   - Use `.env` files for local development
+
+### Development Guide
+
+1. **Setup Development Environment**
+   ```bash
+   # Clone the repository
+   git clone https://github.com/cloud2ai/devtoolbox.git
+   cd devtoolbox
+   
+   # Create and activate virtual environment
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   
+   # Install development dependencies
+   pip install -e ".[dev]"
+   ```
+
+2. **Project Structure**
+   ```
+   devtoolbox/
+   ├── llm/              # Large Language Model implementations
+   ├── speech/           # Speech processing implementations
+   ├── jira/            # Jira integration
+   ├── markdown/        # Markdown processing
+   ├── search_engine/   # Search engine implementation
+   ├── text/            # Text processing utilities
+   ├── images/          # Image processing utilities
+   ├── utils/           # Common utilities
+   └── cmd/             # Command line tools
+   ```
+
+3. **Adding New Features**
+   - Follow the driver pattern for new providers
+   - Implement base classes for new modules
+   - Add configuration classes for new providers
+   - Update documentation in `DEVELOPER.md`
+
+4. **Testing**
+   ```bash
+   # Run all tests
+   pytest
+   
+   # Run specific module tests
+   pytest tests/llm
+   pytest tests/speech
+   ```
+
+5. **Documentation**
+   - Update `README.md` for user-facing changes
+   - Update `DEVELOPER.md` for development guidelines
+   - Add docstrings to all new code
+   - Follow existing code style and patterns
