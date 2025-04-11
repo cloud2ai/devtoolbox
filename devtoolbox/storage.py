@@ -4,6 +4,7 @@ from io import BytesIO
 import os
 from pathlib import Path
 import shutil
+import fnmatch
 
 from minio import Minio, error
 
@@ -24,19 +25,19 @@ logger = logging.getLogger(__name__)
 class BaseStorage:
     """Base storage class that defines the interface for all storage
     implementations.
-    
+
     This class provides a common interface for different storage backends
     like local filesystem and object storage services. It defines the basic
     operations that any storage implementation must support:
-    
+
     - Reading files
-    - Writing files 
+    - Writing files
     - Checking file existence
     - Getting full file paths
     - Copying files
     - Listing files
-    
-    Storage implementations should inherit from this class and implement 
+
+    Storage implementations should inherit from this class and implement
     all methods.
     """
 
@@ -79,20 +80,20 @@ class BaseStorage:
 
 
 class ObjectStorage(BaseStorage):
-    """Storage implementation for object storage services like S3, MinIO, 
+    """Storage implementation for object storage services like S3, MinIO,
     etc.
-    
-    This class provides an implementation of the storage interface for 
+
+    This class provides an implementation of the storage interface for
     cloud object storage services. It supports:
-    
+
     - Reading/writing files to cloud storage
     - Generating pre-signed URLs for temporary access
     - Permanent URLs for public access
     - Listing objects with prefix and pattern matching
     - Content type handling for proper file storage
     - Virtual host style endpoints
-    
-    The implementation uses MinIO client which is compatible with S3 and 
+
+    The implementation uses MinIO client which is compatible with S3 and
     other object storage services that implement the S3 protocol.
     """
 
@@ -105,26 +106,26 @@ class ObjectStorage(BaseStorage):
             access_key (str): The access key.
             secret_key (str): The secret key.
             region (str, optional): The region.
-            use_virtual_style (bool, optional): Whether to use virtual style 
+            use_virtual_style (bool, optional): Whether to use virtual style
                 endpoint.
         """
         logger.info(f"Initializing ObjectStorage with bucket: {base_path}")
-        
+
         # Try to get config from kwargs first, then environment variables
         self.endpoint = (
-            kwargs.get("endpoint") or 
+            kwargs.get("endpoint") or
             os.environ.get("OSS_ENDPOINT")
         )
         access_key = (
-            kwargs.get("access_key") or 
+            kwargs.get("access_key") or
             os.environ.get("OSS_ACCESS_KEY")
         )
         secret_key = (
-            kwargs.get("secret_key") or 
+            kwargs.get("secret_key") or
             os.environ.get("OSS_SECRET_KEY")
         )
         region = (
-            kwargs.get("region") or 
+            kwargs.get("region") or
             os.environ.get("OSS_REGION")
         )
         use_virtual_style = kwargs.get("use_virtual_style", False)
@@ -188,7 +189,7 @@ class ObjectStorage(BaseStorage):
               content_type=TEXT_CONTENT_TYPE, *args, **kwargs):
         """Write content to object storage."""
         # Set content type for saving
-        write_content_type = OSS_CONTENT_TYPES.get(content_type, 
+        write_content_type = OSS_CONTENT_TYPES.get(content_type,
                                                    OSS_TEXT_CONTENT_TYPE)
         logger.info(f"Writing to object storage: bucket={self.bucket}, "
                     f"path={path}, content_type={content_type} -> "
@@ -239,7 +240,7 @@ class ObjectStorage(BaseStorage):
                     f"{is_permanent}")
 
         if is_permanent:
-            # Sample url: 
+            # Sample url:
             # https://<bucket>.cos.ap-beijing.myqcloud.com/images/object
             base_url = f"{self.bucket}.{self.endpoint}"
             url = os.path.join("https://", base_url, path)
@@ -292,19 +293,18 @@ class ObjectStorage(BaseStorage):
 
 
 class FileStorage(BaseStorage):
-    """Storage implementation for local file system.
-    
-    This class provides an implementation of the storage interface for the 
-    local filesystem. It supports:
-    
+    """File system storage implementation.
+
+    This class provides a file system-based implementation of the BaseStorage
+    interface. It supports:
     - Reading/writing files with proper content type handling
     - Directory creation and path management
     - File existence checks
     - File copying
     - File listing with pattern matching
     - Full path resolution
-    
-    The implementation uses standard Python file and path operations to 
+
+    The implementation uses standard Python file and path operations to
     handle local files and directories.
     """
 
@@ -317,9 +317,9 @@ class FileStorage(BaseStorage):
         logger.info(f"Reading from storage: {target_path}...")
 
         try:
-            with open(target_path, "r") as f:
+            # Always use binary mode for reading
+            with open(target_path, "rb") as f:
                 content = f.read()
-
             logger.debug(f"Read {len(content)} bytes from {target_path}")
             return content
         except Exception as e:
@@ -335,11 +335,11 @@ class FileStorage(BaseStorage):
         logger.info(f"Writing content type {content_type} to storage: "
                     f"{target_path}...")
 
-        write_mode = "w" if content_type in TEXT_CONTENT_TYPES else "wb"
-        logger.debug(f"Using write mode: {write_mode}")
-
+        # Always use binary mode for writing
         try:
-            with open(target_path, write_mode) as f:
+            with open(target_path, "wb") as f:
+                if isinstance(content, str):
+                    content = content.encode()
                 bytes_written = f.write(content)
             logger.debug(f"Successfully wrote {bytes_written} bytes to "
                          f"{target_path}")
@@ -380,17 +380,21 @@ class FileStorage(BaseStorage):
             logger.error(f"Error copying file: {str(e)}")
             raise
 
-    def ls(self, path=None, pattern="*"):
-        """List files in file system."""
-        search_path = self.base_path
-        if path:
-            search_path = os.path.join(self.base_path, path)
+    def ls(self, path="", pattern=None):
+        """List files in directory."""
+        target_path = os.path.join(self.base_path, path)
+        logger.info(f"Listing files in: {target_path}")
 
-        logger.info(f"Listing files in {search_path} with pattern {pattern}")
         try:
-            files = glob.glob(os.path.join(search_path, pattern))
-            logger.debug(f"Found {len(files)} files matching pattern")
-            return files
+            files = []
+            for root, _, filenames in os.walk(target_path):
+                for filename in filenames:
+                    file_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(file_path, self.base_path)
+                    if pattern is None or fnmatch.fnmatch(rel_path, pattern):
+                        files.append(rel_path)
+            return sorted(files)
         except Exception as e:
-            logger.error(f"Error listing files: {str(e)}")
+            logger.error(f"Error listing files in: {target_path}, "
+                         f"error: {str(e)}")
             raise

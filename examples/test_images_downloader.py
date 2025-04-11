@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating the usage of ImageDownloader.
+Example script demonstrating the basic usage of ImageDownloader.
 
-This script shows different ways to use the ImageDownloader class,
-including basic usage, advanced filtering, and search functionality.
+This script shows the most common use case of the ImageDownloader class,
+with additional features documented in comments.
 """
 
 import os
@@ -22,17 +22,22 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-def test_basic_download():
-    """Demonstrate basic image downloading functionality."""
-    print("\n=== Testing Basic Image Download ===")
+def main():
+    """Run the basic image downloader example."""
+    print("STARTING IMAGE DOWNLOADER EXAMPLE")
+    print("=" * 50)
 
-    # Sample image URLs (using placeholder URLs)
+    # Create downloads directory
+    os.makedirs("examples/downloads", exist_ok=True)
+
+    # Basic example: Download images from URLs
     image_urls = [
         "https://picsum.photos/800/600",
         "https://picsum.photos/900/600",
         "https://picsum.photos/800/700"
     ]
 
+    # Initialize the downloader with basic settings
     downloader = ImageDownloader(
         images=image_urls,
         path_prefix="examples/downloads/basic",
@@ -41,25 +46,49 @@ def test_basic_download():
     )
 
     try:
+        # Download images and get their paths
         downloaded_images = downloader.download_images()
         print(f"Successfully downloaded images: {downloaded_images}")
     except Exception as e:
-        print(f"Error during basic download: {str(e)}")
+        print(f"Error during download: {str(e)}")
         logging.exception(e)
 
-def test_filtered_download():
-    """Demonstrate image downloading with size filtering."""
-    print("\n=== Testing Filtered Image Download ===")
+    print("=" * 50)
 
-    image_urls = [
-        "https://picsum.photos/300/200",  # Should be filtered out (too small)
-        "https://picsum.photos/1200/800",  # Should be included
-        "https://picsum.photos/200/1000"   # Should be filtered out (wrong ratio)
-    ]
+    # Additional features documentation:
+    """
+    The ImageDownloader class supports many advanced features:
 
+    1. Image Filtering:
+       - filter_width: Minimum width for images (default: 500)
+       - filter_height: Minimum height for images (default: 500)
+       - remove_duplicate: Remove duplicate images using perceptual hashing
+
+    2. Image Processing:
+       - convert_width: Resize images to specified width while maintaining
+                        aspect ratio
+       - use_cache: Use cached images if available
+
+    3. Priority Images:
+       - top_image: Specify a high-priority image URL that will be included
+                    even if it doesn't meet filter criteria
+
+    4. Search Integration:
+       - enable_search_download: Enable downloading additional images from
+                                search
+       - search_keywords: Keywords to use for image search
+
+    5. Storage Options:
+       - storage: Custom storage backend for saving images
+       - upload_images(): Method to upload downloaded images to additional
+                         storage
+
+    Example usage of advanced features:
+    
+    # With filtering and resizing
     downloader = ImageDownloader(
         images=image_urls,
-        path_prefix="examples/downloads/filtered",
+        path_prefix="downloads/filtered",
         base_filename="filtered",
         filter_width=800,
         filter_height=600,
@@ -67,97 +96,23 @@ def test_filtered_download():
         remove_duplicate=True
     )
 
-    try:
-        downloaded_images = downloader.download_images()
-        print(f"Successfully downloaded filtered images: {downloaded_images}")
-    except Exception as e:
-        print(f"Error during filtered download: {str(e)}")
-
-def test_priority_download():
-    """Demonstrate downloading with a priority (top) image."""
-    print("\n=== Testing Priority Image Download ===")
-
-    image_urls = [
-        "https://picsum.photos/300/200",
-        "https://picsum.photos/400/300",
-        "https://picsum.photos/350/250"
-    ]
-
+    # With priority image
     downloader = ImageDownloader(
         images=image_urls,
-        path_prefix="examples/downloads/priority",
+        path_prefix="downloads/priority",
         base_filename="priority",
-        filter_width=800,  # Higher than actual image sizes
-        filter_height=600,
-        top_image=image_urls[0],  # First image will be included despite size
-        max_download_num=2
+        top_image=image_urls[0]
     )
 
-    try:
-        downloaded_images = downloader.download_images()
-        print(f"Successfully downloaded priority images: {downloaded_images}")
-    except Exception as e:
-        print(f"Error during priority download: {str(e)}")
-
-def test_search_download():
-    """Demonstrate image downloading with search functionality."""
-    print("\n=== Testing Search and Download ===")
-
-    image_urls = [
-        "https://picsum.photos/800/600"
-    ]
-
+    # With search integration
     downloader = ImageDownloader(
         images=image_urls,
-        path_prefix="examples/downloads/search",
+        path_prefix="downloads/search",
         base_filename="search",
-        max_download_num=3,
         enable_search_download=True,
         search_keywords="nature landscape"
     )
-
-    try:
-        downloaded_images = downloader.download_images()
-        print(f"Successfully downloaded images with search: {downloaded_images}")
-    except Exception as e:
-        print(f"Error during search download: {str(e)}")
-
-def cleanup_example_files():
-    """Clean up downloaded files after tests."""
-    try:
-        import shutil
-        downloads_dir = Path("examples/downloads")
-        if downloads_dir.exists():
-            shutil.rmtree(downloads_dir)
-            print("\nCleaned up example files.")
-    except Exception as e:
-        print(f"Error during cleanup: {str(e)}")
-
-def main():
-    """Run all example scenarios."""
-    print("STARTING IMAGE DOWNLOADER EXAMPLES")
-    print("=" * 50)
-
-    # Create downloads directory
-    os.makedirs("examples/downloads", exist_ok=True)
-
-    try:
-        # Run all test scenarios
-        test_basic_download()
-        test_filtered_download()
-        test_priority_download()
-        test_search_download()
-
-        # Clean up after tests
-        cleanup_example_files()
-
-        print("\nAll examples completed successfully!")
-
-    except Exception as e:
-        print(f"\nAn error occurred during examples: {str(e)}")
-        logging.exception(e)
-
-    print("=" * 50)
+    """
 
 if __name__ == "__main__":
     main()

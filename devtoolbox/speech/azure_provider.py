@@ -1,8 +1,13 @@
+"""Azure speech provider implementation.
+
+This module provides the Azure speech provider implementation using
+Azure Cognitive Services Speech SDK.
+"""
+
 import logging
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 import os
-from pathlib import Path
 
 import azure.cognitiveservices.speech as speechsdk
 from tenacity import (
@@ -16,28 +21,20 @@ from tenacity import (
 from devtoolbox.speech.provider import (
     BaseSpeechConfig,
     BaseSpeechProvider,
-    register_provider
+    register_provider,
+    register_config,
 )
 
 logger = logging.getLogger(__name__)
 
-# SSML template for text-to-speech synthesis
-SSML_TEXT = """
-<speak xmlns="http://www.w3.org/2001/10/synthesis"
-       xmlns:mstts="http://www.w3.org/2001/mstts"
-       xmlns:emo="http://www.w3.org/2009/10/emotionml"
-       version="1.0" xml:lang="zh-CN">
-    <voice name="{speaker}">
-        <prosody rate="{rate}%">{text}</prosody>
-    </voice>
-</speak>
-"""
 
-
+@register_config('azure')
 @dataclass
 class AzureConfig(BaseSpeechConfig):
-    """
-    Azure Speech Service configuration
+    """Azure Speech Service configuration.
+
+    This class automatically loads configuration from environment variables
+    if not provided during initialization.
 
     Attributes:
         subscription_key: Azure subscription key
@@ -46,7 +43,8 @@ class AzureConfig(BaseSpeechConfig):
         language: Speech language (default: auto for auto-detection)
         rate: Speech rate (default: 0)
         supported_languages: List of supported languages for auto-detection
-                           (maximum 4 languages for auto-detection)
+                           (default: Simplified Chinese and US English)
+        ssml_template: SSML template for text-to-speech synthesis
 
     Supported Languages (by usage population):
         - "ar-AE": Arabic (UAE)
@@ -80,71 +78,109 @@ class AzureConfig(BaseSpeechConfig):
         - "zh-TW": Chinese (Taiwan)
 
     Environment variables:
-        AZURE_SUBSCRIPTION_KEY: Azure subscription key
-        AZURE_SERVICE_REGION: Azure service region
-        AZURE_VOICE_NAME: Azure voice name
-        AZURE_LANGUAGE: Speech language (default: auto)
+        AZURE_SPEECH_KEY: Azure subscription key
+        AZURE_SPEECH_REGION: Azure service region
+        AZURE_SPEECH_VOICE: Azure voice name
+        AZURE_SPEECH_LANGUAGE: Speech language (default: auto)
         AZURE_SPEECH_RATE: Speech rate (default: 0)
     """
-    subscription_key: Optional[str] = None
-    service_region: Optional[str] = None
-    voice_name: Optional[str] = None
-    language: str = "auto"
-    rate: int = 0
-    supported_languages: list = None
+    subscription_key: str = field(
+        default_factory=lambda: os.environ.get('AZURE_SPEECH_KEY')
+    )
+    service_region: str = field(
+        default_factory=lambda: os.environ.get('AZURE_SPEECH_REGION')
+    )
+    voice_name: Optional[str] = field(
+        default_factory=lambda: os.environ.get('AZURE_SPEECH_VOICE')
+    )
+    language: str = field(
+        default_factory=lambda: os.environ.get('AZURE_SPEECH_LANGUAGE', 'auto')
+    )
+    rate: float = field(
+        default_factory=lambda: float(
+            os.environ.get('AZURE_SPEECH_RATE', '0.0')
+        )
+    )
+    supported_languages: List[str] = field(
+        default_factory=lambda: [
+            "zh-CN",  # Chinese (Mainland)
+            "en-US",  # English (US)
+        ]
+    )
+    ssml_template: str = field(
+        default="""
+<speak xmlns="http://www.w3.org/2001/10/synthesis"
+       xmlns:mstts="http://www.w3.org/2001/mstts"
+       xmlns:emo="http://www.w3.org/2009/10/emotionml"
+       version="1.0" xml:lang="zh-CN">
+    <voice name="{speaker}">
+        <prosody rate="{rate}%">{text}</prosody>
+    </voice>
+</speak>
+"""
+    )
 
     def __post_init__(self):
-        """
-        Initialize default supported languages list with the most commonly used languages:
-        Chinese, English, and Spanish
-        """
-        if self.supported_languages is None:
-            # Default to 3 most commonly used languages globally
-            self.supported_languages = [
-                "zh-CN",     # Chinese (Simplified)
-                "en-US",     # English (US)
-                "es-ES",     # Spanish (Spain)
-            ]
-        elif len(self.supported_languages) > 4:
-            logger.warning(
-                "Azure auto language detection supports maximum 4 languages. "
-                f"Truncating from {len(self.supported_languages)} to first 4."
+        """Validate configuration and log loading process."""
+        self._log_config_loading()
+        self._validate_config()
+
+    def _log_config_loading(self):
+        """Log configuration loading process."""
+        if self.subscription_key:
+            logger.info("Azure Speech subscription key loaded from constructor")
+        elif os.environ.get('AZURE_SPEECH_KEY'):
+            logger.info(
+                "Azure Speech subscription key loaded from environment variable"
             )
-            self.supported_languages = self.supported_languages[:4]
+        else:
+            logger.error(
+                "Azure Speech subscription key not found in constructor "
+                "or environment"
+            )
 
-    @classmethod
-    def from_env(cls) -> 'AzureConfig':
-        """
-        Create Azure configuration from environment variables
+        if self.service_region:
+            logger.info("Azure Speech region loaded from constructor")
+        elif os.environ.get('AZURE_SPEECH_REGION'):
+            logger.info(
+                "Azure Speech region loaded from environment variable"
+            )
+        else:
+            logger.error(
+                "Azure Speech region not found in constructor or environment"
+            )
 
-        Returns:
-            AzureConfig: Configuration instance with values from environment
-        """
-        return cls(
-            subscription_key=os.environ.get('AZURE_SUBSCRIPTION_KEY'),
-            service_region=os.environ.get('AZURE_SERVICE_REGION'),
-            voice_name=os.environ.get('AZURE_VOICE_NAME'),
-            language=os.environ.get('AZURE_LANGUAGE', 'auto'),
-            rate=int(os.environ.get('AZURE_SPEECH_RATE', '0'))
+        logger.info(f"Voice name: {self.voice_name or 'Not set'}")
+        logger.info(f"Language: {self.language}")
+        logger.info(f"Speech rate: {self.rate}")
+        logger.info(
+            f"Active languages (max 4): {', '.join(self.supported_languages)}"
         )
 
-    def validate(self):
-        """
-        Validate Azure specific configuration
-
-        Raises:
-            ValueError: If required configuration is missing
-        """
+    def _validate_config(self):
+        """Validate Azure configuration."""
         if not self.subscription_key:
             raise ValueError(
                 "subscription_key is required. Set it either in constructor "
-                "or through AZURE_SUBSCRIPTION_KEY environment variable"
+                "or through AZURE_SPEECH_KEY environment variable"
             )
         if not self.service_region:
             raise ValueError(
                 "service_region is required. Set it either in constructor "
-                "or through AZURE_SERVICE_REGION environment variable"
+                "or through AZURE_SPEECH_REGION environment variable"
             )
+
+    @classmethod
+    def from_env(cls) -> 'AzureConfig':
+        """Create Azure configuration from environment variables.
+        
+        This method is kept for backward compatibility.
+        """
+        logger.warning(
+            "from_env() is deprecated. Configuration is now automatically "
+            "loaded during initialization."
+        )
+        return cls()
 
 
 class AzureError(Exception):
@@ -157,8 +193,23 @@ class AzureRateLimitError(AzureError):
     pass
 
 
-@register_provider("azure")
-class AzureSpeechProvider(BaseSpeechProvider):
+class AzureConfigError(AzureError):
+    """Raised when Azure configuration is invalid"""
+    pass
+
+
+class AzureSynthesisError(AzureError):
+    """Raised when speech synthesis fails"""
+    pass
+
+
+class AzureRecognitionError(AzureError):
+    """Raised when speech recognition fails"""
+    pass
+
+
+@register_provider('AzureProvider')
+class AzureProvider(BaseSpeechProvider):
     """
     Azure speech provider implementation
 
@@ -179,7 +230,8 @@ class AzureSpeechProvider(BaseSpeechProvider):
         self._speech_recognizer = None
 
         logger.info(
-            f"Initializing Azure provider (region: {config.service_region}, "
+            "Initializing Azure provider "
+            f"(region: {config.service_region}, "
             f"language: {config.language})"
         )
 
@@ -190,12 +242,19 @@ class AzureSpeechProvider(BaseSpeechProvider):
 
         Returns:
             Configured Azure speech config instance
+
+        Raises:
+            AzureConfigError: If speech config creation fails
         """
         if self._speech_config is None:
-            self._speech_config = speechsdk.SpeechConfig(
-                subscription=self.config.subscription_key,
-                region=self.config.service_region
-            )
+            try:
+                self._speech_config = speechsdk.SpeechConfig(
+                    subscription=self.config.subscription_key,
+                    region=self.config.service_region
+                )
+                logger.debug("Azure speech config created successfully")
+            except Exception as e:
+                raise AzureConfigError(f"Failed to create speech config: {str(e)}")
         return self._speech_config
 
     def _handle_synthesis_result(
@@ -204,39 +263,38 @@ class AzureSpeechProvider(BaseSpeechProvider):
         save_path: str
     ) -> str:
         """
-        Handle the result of speech synthesis
+        Handle speech synthesis result
 
         Args:
-            result: Speech synthesis result from Azure
+            result: Speech synthesis result
             save_path: Path to save the audio file
 
         Returns:
             str: Path to the saved audio file
 
         Raises:
-            AzureRateLimitError: If rate limit is exceeded
-            AzureError: If synthesis fails for other reasons
+            AzureSynthesisError: If synthesis failed
         """
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-            stream = speechsdk.AudioDataStream(result)
-            stream.save_to_wav_file(save_path)
-            logger.info(f"Generated audio saved to: {save_path}")
-            return save_path
+            try:
+                with open(save_path, 'wb') as f:
+                    f.write(result.audio_data)
+                logger.info(f"Audio saved successfully to {save_path}")
+                return save_path
+            except Exception as e:
+                raise AzureSynthesisError(f"Failed to save audio: {str(e)}")
 
-        elif result.reason == speechsdk.ResultReason.Canceled:
+        if result.reason == speechsdk.ResultReason.Canceled:
             details = result.cancellation_details
-            error_code = getattr(details, 'error_code', None)
+            if (details.reason == speechsdk.CancellationReason.Error
+                    and "429" in details.error_details):
+                raise AzureRateLimitError("Rate limit exceeded")
+            raise AzureSynthesisError(
+                f"Synthesis canceled: {details.reason}. "
+                f"Error details: {details.error_details}"
+            )
 
-            if error_code == 429:
-                raise AzureRateLimitError(
-                    "Rate limit exceeded. Please retry after some time."
-                )
-
-            error_msg = f"Speech synthesis canceled: {details.reason}"
-            if details.reason == speechsdk.CancellationReason.Error:
-                error_msg = f"{error_msg}. Details: {details.error_details}"
-
-            raise AzureError(error_msg)
+        raise AzureSynthesisError(f"Synthesis failed: {result.reason}")
 
     @retry(
         retry=retry_if_exception_type(AzureRateLimitError),
@@ -250,55 +308,59 @@ class AzureSpeechProvider(BaseSpeechProvider):
         save_path: str,
         speaker: Optional[str] = None,
         rate: int = 0,
-        *args,
         **kwargs
     ) -> str:
         """
-        Convert text to speech using Azure TTS with automatic retry
+        Convert text to speech using Azure Speech Service
 
         Args:
-            text: Text to convert to speech
+            text: Text to convert
             save_path: Path to save the audio file
-            speaker: Voice name to use (optional)
-            rate: Speech rate adjustment (optional)
+            speaker: Voice to use (default: config voice_name)
+            rate: Speech rate adjustment (default: 0)
+            **kwargs: Additional arguments
 
         Returns:
             str: Path to the saved audio file
 
         Raises:
-            ValueError: If configuration is invalid
-            AzureError: If synthesis fails
+            AzureSynthesisError: If synthesis fails
         """
-        self.config.validate()
+        if not text or not save_path:
+            raise ValueError("Text and save_path are required")
 
+        # Use configured voice if not specified
         voice_name = speaker or self.config.voice_name
         if not voice_name:
             raise ValueError("Voice name is required")
 
-        self.speech_config.speech_synthesis_voice_name = voice_name
-        output_format = (
-            speechsdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm
-        )
-        self.speech_config.set_speech_synthesis_output_format(output_format)
-
         try:
-            synthesizer = speechsdk.SpeechSynthesizer(
-                speech_config=self.speech_config,
-                audio_config=None
-            )
-
-            ssml_text = SSML_TEXT.format(
+            # Prepare SSML text
+            ssml_text = self.config.ssml_template.format(
                 speaker=voice_name,
                 rate=rate,
                 text=text
             )
 
+            # Configure audio output
+            audio_config = speechsdk.audio.AudioOutputConfig(
+                filename=save_path
+            )
+
+            # Create synthesizer
+            synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=self.speech_config,
+                audio_config=audio_config
+            )
+
+            # Synthesize speech
+            logger.info(f"Synthesizing speech with voice: {voice_name}")
             result = synthesizer.speak_ssml_async(ssml_text).get()
+
             return self._handle_synthesis_result(result, save_path)
 
         except Exception as e:
-            logger.error(f"Speech synthesis failed: {str(e)}")
-            raise
+            raise AzureSynthesisError(f"Synthesis failed: {str(e)}")
 
     @retry(
         retry=retry_if_exception_type(AzureRateLimitError),
@@ -308,101 +370,99 @@ class AzureSpeechProvider(BaseSpeechProvider):
     )
     def transcribe(
         self,
-        speech_path: str,
-        output_path: str,
-        output_format: str = "txt"
+        audio_path: str,
+        save_path: str,
+        output_format: str = "txt",
+        **kwargs
     ) -> str:
         """
-        Transcribe audio using Azure STT with automatic retry and language detection
+        Convert speech to text using Azure Speech Service
 
         Args:
-            speech_path: Path to the audio file
-            output_path: Path to save the transcription
-            output_format: Output format (default: txt)
+            audio_path: Path to the audio file
+            save_path: Path to save the transcription
+            output_format: Output format (txt or srt)
+            **kwargs: Additional arguments
 
         Returns:
             str: Path to the saved transcription file
 
         Raises:
-            FileNotFoundError: If audio file doesn't exist
-            AzureError: If transcription fails
+            AzureRecognitionError: If recognition fails
         """
-        speech_path = Path(speech_path)
-        if not speech_path.exists():
-            raise FileNotFoundError(f"Audio file not found: {speech_path}")
-
-        logger.info(f"Transcribing audio: {speech_path}")
+        if not audio_path or not save_path:
+            raise ValueError("Audio path and save path are required")
 
         try:
+            # Configure audio input
             audio_config = speechsdk.audio.AudioConfig(
-                filename=str(speech_path)
+                filename=audio_path
             )
 
+            # Configure speech recognition
             if self.config.language == "auto":
-                # Use auto language detection
-                auto_detect_source_language_config = \
+                auto_detect_config = (
                     speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
                         languages=self.config.supported_languages
                     )
-
+                )
                 recognizer = speechsdk.SpeechRecognizer(
                     speech_config=self.speech_config,
-                    audio_config=audio_config,
-                    auto_detect_source_language_config=\
-                        auto_detect_source_language_config
+                    auto_detect_source_language_config=auto_detect_config,
+                    audio_config=audio_config
                 )
             else:
-                # Use specified language
                 recognizer = speechsdk.SpeechRecognizer(
                     speech_config=self.speech_config,
-                    audio_config=audio_config,
-                    language=self.config.language
+                    audio_config=audio_config
                 )
 
-            logger.debug("Starting speech recognition...")
-            result = recognizer.recognize_once()
-            logger.debug(f"Recognition result: {result.reason}")
+            # Recognize speech
+            logger.info(
+                "Recognizing speech from "
+                f"{audio_path} "
+                f"(language: {self.config.language})"
+            )
+            result = recognizer.recognize_once_async().get()
 
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                output_path = Path(output_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(result.text, encoding='utf-8')
-                logger.info(f"Transcription saved to: {output_path}")
-                return str(output_path)
+                try:
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        f.write(result.text)
+                    logger.info(f"Transcription saved to {save_path}")
+                    return save_path
+                except Exception as e:
+                    raise AzureRecognitionError(f"Failed to save transcription: {str(e)}")
 
-            elif result.reason == speechsdk.ResultReason.NoMatch:
-                no_match_details = result.no_match_details
-                logger.warning(
-                    f"No speech recognized. Reason: {no_match_details.reason}"
-                )
-                # Create empty output file
-                output_path = Path(output_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text("", encoding='utf-8')
-                return str(output_path)
-
-            elif result.reason == speechsdk.ResultReason.Canceled:
+            if result.reason == speechsdk.ResultReason.Canceled:
                 details = result.cancellation_details
-
-                # Log detailed cancellation information
-                logger.error(
-                    f"Recognition canceled. Reason: {details.reason}, "
+                if (details.reason == speechsdk.CancellationReason.Error
+                        and "429" in details.error_details):
+                    raise AzureRateLimitError("Rate limit exceeded")
+                raise AzureRecognitionError(
+                    f"Recognition canceled: {details.reason}. "
                     f"Error details: {details.error_details}"
                 )
 
-                if details.reason == speechsdk.CancellationReason.Error:
-                    # Check for specific error conditions in error_details
-                    if "401" in details.error_details:
-                        raise AzureError("Authentication failed")
-                    elif "429" in details.error_details:
-                        raise AzureRateLimitError(
-                            "Rate limit exceeded during transcription"
-                        )
-                    else:
-                        raise AzureError(
-                            f"Transcription error: {details.error_details}"
-                        )
+            raise AzureRecognitionError(f"Recognition failed: {result.reason}")
 
         except Exception as e:
-            logger.error(f"Transcription failed: {str(e)}")
-            raise
+            raise AzureRecognitionError(f"Recognition failed: {str(e)}")
+
+    def list_speakers(self) -> List[str]:
+        """
+        List available speakers/voices
+
+        Returns:
+            List[str]: List of available voices
+        """
+        # Azure doesn't provide a direct API to list voices
+        # Return a list of commonly used voices
+        return [
+            "zh-CN-XiaoxiaoNeural",
+            "zh-CN-YunxiNeural",
+            "en-US-JennyNeural",
+            "en-US-GuyNeural",
+            "es-ES-AlvaroNeural",
+            "es-ES-ElviraNeural"
+        ]

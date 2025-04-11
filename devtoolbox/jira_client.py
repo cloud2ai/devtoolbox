@@ -73,11 +73,35 @@ class JiraClient:
                              "initialization function or as environment "
                              "variables.")
 
-        self.client = JIRA(
-            server=self.jira_url,
-            basic_auth=(self.username, self.password),
-            *args, **kwargs
-        )
+        try:
+            self.client = JIRA(
+                server=self.jira_url,
+                basic_auth=(self.username, self.password),
+                *args, **kwargs
+            )
+            # Test the connection by making a simple request
+            self.client.myself()
+        except Exception as e:
+            error_msg = str(e)
+            if "401" in error_msg:
+                raise ValueError(
+                    "Authentication failed. Please check your JIRA "
+                    "username and password."
+                )
+            elif "403" in error_msg:
+                raise ValueError(
+                    "Access forbidden. Please check if your account "
+                    "has the necessary permissions."
+                )
+            elif "404" in error_msg:
+                raise ValueError(
+                    f"JIRA server not found at {self.jira_url}. "
+                    "Please check the URL."
+                )
+            else:
+                raise ValueError(
+                    f"Failed to connect to JIRA: {error_msg}"
+                )
 
     def search_issues(self, jql: str, max_results: int = None) -> List:
         """Search issues using JQL query.
@@ -133,8 +157,10 @@ class JiraClient:
                 'updated': issue.fields.updated,
                 'description': issue.fields.description or '',
                 'labels': issue.fields.labels,
-                'components': [c.name for c in issue.fields.components],
-                'fix_versions': [v.name for v in issue.fields.fixVersions],
+                'components': [c.name if hasattr(c, 'name') else c
+                             for c in issue.fields.components],
+                'fix_versions': [v.name if hasattr(v, 'name') else v
+                               for v in issue.fields.fixVersions],
                 'epic_link': getattr(issue.fields, self.EPIC_LINK_FIELD, None),
             }
 
@@ -202,7 +228,7 @@ class JiraClient:
             content = re.sub(
                 image_pattern,
                 lambda m: (f"![{m.group(1)}]({self.jira_url}/secure/"
-                            f"attachment/{issue_data['key']}/{m.group(1)})"),
+                          f"attachment/{issue_data['key']}/{m.group(1)})"),
                 content
             )
 
@@ -211,7 +237,7 @@ class JiraClient:
             content = re.sub(
                 attachment_pattern,
                 lambda m: (f"[{m.group(1)}]({self.jira_url}/secure/"
-                            f"attachment/{issue_data['key']}/{m.group(1)})"),
+                          f"attachment/{issue_data['key']}/{m.group(1)})"),
                 content
             )
 
@@ -245,8 +271,8 @@ class JiraClient:
         if issue_data['fix_versions']:
             md += f"- **Fix Versions:** {', '.join(issue_data['fix_versions'])}\n"
         if issue_data['epic_link']:
-            md += (f"- **Epic Link:** "
-                   f"{convert_jira_content(issue_data['epic_link'])}\n")
+            epic_link = str(issue_data['epic_link'])
+            md += f"- **Epic Link:** {convert_jira_content(epic_link)}\n"
 
         # Description with content conversion
         if issue_data['description']:
@@ -258,7 +284,7 @@ class JiraClient:
             md += "\n## Comments\n"
             for comment in issue_data['comments']:
                 md += (f"### {comment['author']} - {comment['created']}\n"
-                        f"{convert_jira_content(comment['body'])}\n\n")
+                       f"{convert_jira_content(comment['body'])}\n\n")
 
         # History with content conversion
         if issue_data['history']:
@@ -268,9 +294,9 @@ class JiraClient:
                 for change in history['changes']:
                     # Convert both 'from' and 'to' values
                     from_value = (convert_jira_content(str(change['from']))
-                                  if change['from'] else '')
+                                if change['from'] else '')
                     to_value = (convert_jira_content(str(change['to']))
-                                if change['to'] else '')
+                              if change['to'] else '')
                     md += (f"- Changed **{change['field']}** from "
                            f"'{from_value}' to '{to_value}'\n")
                 md += "\n"
@@ -291,7 +317,7 @@ class JiraClient:
             jira_client.update_issue_labels('PROJ-123', ['label1', 'label2'])
         """
         try:
-        issue = self.client.issue(issue_key)
+            issue = self.client.issue(issue_key)
             existing_labels = issue.fields.labels
 
             # Convert lists to sets for comparison

@@ -6,7 +6,7 @@ import requests
 from pypinyin import lazy_pinyin
 from retry import retry
 
-from devtoolbox.images.convertor import convert_to_png
+from devtoolbox.images.convertor import ImageConverter
 from devtoolbox.markdown.base import MarkdownBase
 
 
@@ -17,6 +17,15 @@ class MarkdownImageDownloader(MarkdownBase):
     loading content from files or strings and converting markdown to other
     formats like docx.
     """
+
+    def __init__(self, path):
+        """Initialize the MarkdownImageDownloader.
+
+        Args:
+            path (str): Path to the markdown file.
+        """
+        super().__init__(path)
+        self._downloaded_images = {}  # Cache for downloaded images
 
     @retry(
         exceptions=requests.RequestException,
@@ -59,7 +68,8 @@ class MarkdownImageDownloader(MarkdownBase):
             str: Path to the converted image or original if conversion failed.
         """
         try:
-            converted_path = convert_to_png(save_path)
+            converter = ImageConverter(save_path)
+            converted_path = converter.convert_to_png()
             if converted_path != save_path:
                 logging.info(f"Converted image to PNG: {converted_path}")
                 return converted_path
@@ -128,6 +138,19 @@ class MarkdownImageDownloader(MarkdownBase):
                 md_basename = ''.join(lazy_pinyin(md_basename))
                 md_basename = re.sub(r'[^a-zA-Z0-9]', '', md_basename)
 
+                # Check if this URL has already been downloaded
+                if image_url in self._downloaded_images:
+                    logging.info(
+                        f"Using cached image for URL: {image_url}"
+                    )
+                    image_name = self._downloaded_images[image_url]
+                    replace_image_line = (
+                        f"![{image_name}]({image_relative_path}/"
+                        f"{image_name})\n\n"
+                    )
+                    updated_lines.append(replace_image_line)
+                    continue
+
                 image_extname = os.path.splitext(
                     os.path.basename(image_url)
                 )[1]
@@ -165,6 +188,9 @@ class MarkdownImageDownloader(MarkdownBase):
                             # Update image name if conversion was successful
                             image_name = os.path.basename(converted_path)
                             save_path = converted_path
+
+                        # Cache the downloaded image
+                        self._downloaded_images[image_url] = image_name
 
                         # Replace image reference
                         replace_image_line = (

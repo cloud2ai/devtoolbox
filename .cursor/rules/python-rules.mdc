@@ -6,6 +6,10 @@ alwaysApply: false
 
 # Your rule content
 
+## Response
+
+- Always use Chinese to explian and always use English in comments
+
 ## Comments
 
 - All comments should use English
