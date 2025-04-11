@@ -15,6 +15,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 from devtoolbox.images.downloader import ImageDownloader
+from devtoolbox.storage import FileStorage
 
 # Configure logging
 logging.basicConfig(
@@ -27,8 +28,15 @@ def main():
     print("STARTING IMAGE DOWNLOADER EXAMPLE")
     print("=" * 50)
 
+    # Get the absolute path of the script directory
+    script_dir = Path(__file__).parent.absolute()
+    download_dir = script_dir / "download_images"
+
     # Create downloads directory
-    os.makedirs("examples/downloads", exist_ok=True)
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Initialize storage with our specified directory
+    storage = FileStorage(str(download_dir))
 
     # Basic example: Download images from URLs
     image_urls = [
@@ -40,9 +48,10 @@ def main():
     # Initialize the downloader with basic settings
     downloader = ImageDownloader(
         images=image_urls,
-        path_prefix="examples/downloads/basic",
+        path_prefix=str(download_dir),
         base_filename="sample",
-        max_download_num=3
+        max_download_num=3,
+        storage=storage  # Use our specified storage
     )
 
     try:
@@ -84,7 +93,7 @@ def main():
                          storage
 
     Example usage of advanced features:
-    
+
     # With filtering and resizing
     downloader = ImageDownloader(
         images=image_urls,

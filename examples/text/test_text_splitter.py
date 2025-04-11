@@ -33,7 +33,7 @@ language modeling.
     splitter_gpt4 = TokenSplitter(
         max_tokens=100,  # Set a small token limit to demonstrate splitting
         overlap_tokens=0,
-        model_name="gpt-4"
+        model_name="gpt-4o-mini"
     )
 
     # Split the English text into paragraphs
