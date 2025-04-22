@@ -87,45 +87,63 @@ def get_word_pos_pairs(
     return [(token.text, token.pos_) for token in doc]
 
 
+def load_spacy_model(language: str) -> spacy.Language:
+    """Load spaCy model for the specified language.
+
+    Args:
+        language: Language code (e.g., 'zh', 'en')
+
+    Returns:
+        Loaded spaCy language model
+    """
+    try:
+        # Map language codes to spaCy model names
+        model_map = {
+            'zh': 'zh_core_web_sm',
+            'en': 'en_core_web_sm',
+            'ja': 'ja_core_news_sm',
+            'ko': 'ko_core_news_sm'
+        }
+
+        model_name = model_map.get(language, 'en_core_web_sm')
+        logger.debug(f"Loading spaCy model: {model_name}")
+        return spacy.load(model_name)
+    except OSError:
+        logger.warning(
+            f"Model for language {language} not available. "
+            "Falling back to English model."
+        )
+        return spacy.load("en_core_web_sm")
+
+
 def extract_keywords(
     text: str,
-    language: str = 'en',
+    language: str,
     top_k: int = 20,
     min_length: int = 2
-) -> List[tuple[str, int]]:
-    """Extract keywords with their frequencies using spaCy.
+) -> List[str]:
+    """Extract top keywords by frequency using spaCy.
 
     Args:
         text: Input text to extract keywords from
-        language: Language code (e.g., 'en', 'zh')
+        language: Language code (e.g., 'zh', 'en')
         top_k: Maximum number of keywords to return
         min_length: Minimum length for keywords
 
     Returns:
-        List[tuple[str, int]]: List of (keyword, frequency) pairs
+        List[str]: List of top keywords sorted by frequency
     """
-    # Load spaCy model if not already loaded
-    if language not in _nlp_models:
-        try:
-            model_name = f"{language}_core_web_sm"
-            logger.debug(f"Loading spaCy model: {model_name}")
-            _nlp_models[language] = spacy.load(model_name)
-        except OSError:
-            logger.warning(
-                f"Model for language {language} not available. "
-                "Falling back to English model."
-            )
-            _nlp_models[language] = spacy.load("en_core_web_sm")
+    # Load spaCy model
+    nlp = load_spacy_model(language)
 
-    nlp = _nlp_models[language]
-    
     # Get word-POS pairs
-    word_pos_pairs = get_word_pos_pairs(text, nlp)
-
-    # Filter and count keywords
+    doc = nlp(text)
     word_counts = Counter()
 
-    for word, pos in word_pos_pairs:
+    for token in doc:
+        word = token.text
+        pos = token.pos_
+
         # Skip if word is too short
         if len(word) < min_length:
             continue
@@ -142,7 +160,7 @@ def extract_keywords(
         word_counts[word.lower()] += 1
 
     # Get top k keywords by frequency
-    return word_counts.most_common(top_k)
+    return [word for word, _ in word_counts.most_common(top_k)]
 
 
 def preprocess_text(text: str, language: str = 'en') -> str:
@@ -164,7 +182,7 @@ def preprocess_text(text: str, language: str = 'en') -> str:
     """
     logger.debug("Starting text preprocessing")
     logger.debug(f"Processing text in language: {language}")
-    
+
     # Split text into lines
     lines = text.split('\n')
     processed_lines = []
@@ -303,10 +321,10 @@ def detect_language(text: str) -> str:
 
 def _create_sentence_pattern(endings: List[str]) -> str:
     """Create regex pattern from sentence endings.
-    
+
     Args:
         endings: List of sentence ending characters
-        
+
     Returns:
         str: Compiled regex pattern
     """
@@ -318,43 +336,43 @@ def _process_sentences(
     protected: dict
 ) -> List[str]:
     """Process text into sentences using given endings.
-    
+
     Args:
         text: Input text to process
         endings: List of sentence ending characters
         protected: Dictionary of protected patterns
-        
+
     Returns:
         List[str]: List of processed sentences
     """
     logger.debug(f"Processing text with endings: {endings}")
     logger.debug(f"Original text: {text}")
     logger.debug(f"Protected patterns: {protected}")
-    
+
     # Create regex pattern from endings
     pattern = r'([' + ''.join(re.escape(p) for p in endings) + r']+)'
     logger.debug(f"Created regex pattern: {pattern}")
-    
+
     raw_sentences = []
     segments = re.split(pattern, text)
     logger.debug(f"Split into {len(segments)} segments")
     logger.debug(f"Segments: {segments}")
-    
+
     current_sentence = ""
     for i, segment in enumerate(segments):
         logger.debug(f"Processing segment {i}: {segment}")
-        
+
         # Skip empty segments
         if not segment.strip():
             continue
-            
+
         # If segment is a sentence ending
         if re.match(pattern, segment):
             # If current sentence is empty and segment is just punctuation,
             # skip it (this handles cases like consecutive punctuation)
             if not current_sentence.strip() and segment.strip() in endings:
                 continue
-                
+
             # Add the punctuation to current sentence
             current_sentence += segment
             if current_sentence.strip():
@@ -363,7 +381,7 @@ def _process_sentences(
             current_sentence = ""
         else:
             current_sentence += segment
-    
+
     # Handle the last sentence if it exists
     if current_sentence.strip():
         # If the last sentence doesn't end with punctuation,
@@ -372,28 +390,28 @@ def _process_sentences(
             current_sentence += endings[0]  # Use the first ending as default
         logger.debug(f"Adding final sentence: {current_sentence.strip()}")
         raw_sentences.append(current_sentence.strip())
-    
+
     logger.debug(f"Found {len(raw_sentences)} raw sentences")
-    
+
     # Restore protected patterns and filter empty sentences
     sentences = [
         restore_protected_patterns(s.strip(), protected)
         for s in raw_sentences
         if s.strip()
     ]
-    
+
     logger.debug(f"Final processed sentences: {sentences}")
     return sentences
 
 def split_sentences_zh(text: str) -> List[str]:
     """Split text into sentences using Chinese sentence endings.
-    
+
     This function splits Chinese text into sentences using Chinese-specific
     sentence endings and handles special patterns that should not be split.
-    
+
     Args:
         text: Input text to split
-        
+
     Returns:
         List[str]: List of sentences
     """
@@ -404,13 +422,13 @@ def split_sentences_zh(text: str) -> List[str]:
 
 def split_sentences_en(text: str) -> List[str]:
     """Split text into sentences using English sentence endings.
-    
+
     This function splits English text into sentences using English-specific
     sentence endings and handles special patterns that should not be split.
-    
+
     Args:
         text: Input text to split
-        
+
     Returns:
         List[str]: List of sentences
     """
@@ -460,3 +478,46 @@ def count_tokens(text: str, model_name: str = "gpt-4o-mini") -> int:
         return len(tokenizer.encode(text))
     else:
         return len(tokenizer.tokenize(text))
+
+def get_unique_words(
+    text: str,
+    language: str,
+    min_length: int = 2
+) -> List[str]:
+    """Get unique words from text using spaCy.
+
+    Args:
+        text: Input text to process
+        language: Language code (e.g., 'zh', 'en')
+        min_length: Minimum length for words
+
+    Returns:
+        List[str]: List of unique words
+    """
+    # Load spaCy model
+    nlp = load_spacy_model(language)
+
+    # Process text
+    doc = nlp(text)
+    unique_words = set()
+
+    for token in doc:
+        word = token.text
+        pos = token.pos_
+
+        # Skip if word is too short
+        if len(word) < min_length:
+            continue
+
+        # Skip if pure number
+        if word.isdigit():
+            continue
+
+        # Skip common ignored POS tags
+        if (pos in IGNORED_POS or
+                pos in CHINESE_IGNORED_POS):
+            continue
+
+        unique_words.add(word.lower())
+
+    return list(unique_words)

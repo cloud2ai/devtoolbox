@@ -24,7 +24,12 @@ def process_text(text: str, title: str):
     paragraphs = splitter.split()
 
     # Print results
-    print(f"\nTotal paragraphs split: {len(paragraphs)}\n")
+    print(f"\nTotal paragraphs split: {len(paragraphs)}")
+    print(f"Total unique words: {len(splitter.unique_words)}")
+    print("Unique words list:")
+    for word in splitter.unique_words:
+        print(f"  - {word}")
+    print()
     
     for i, para in enumerate(paragraphs, 1):
         print(f"Paragraph {i}:")

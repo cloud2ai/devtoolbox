@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from .utils import (
     extract_keywords,
     detect_language,
-    preprocess_text
+    preprocess_text,
+    get_unique_words
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,19 @@ class BaseSplitter(ABC):
         else:
             self._text = text
 
+        self._keywords = None
+
+    @property
+    def keywords(self) -> List[tuple[str, int]]:
+        """Get the keywords in the text.
+
+        Returns:
+            List[tuple[str, int]]: List of (keyword, frequency) pairs
+        """
+        if not self._keywords:
+            self._keywords = self.get_keywords()
+        return self._keywords
+
     @property
     def text(self) -> str:
         """Get the processed text.
@@ -98,6 +112,28 @@ class BaseSplitter(ABC):
             The processed text.
         """
         return self._text
+
+    @property
+    def length(self) -> int:
+        """Get the length of the processed text.
+
+        Returns:
+            The length of the processed text.
+        """
+        return self.length_func(self._text)
+
+    @property
+    def unique_words(self) -> List[str]:
+        """Get the list of unique words in the text.
+
+        Returns:
+            List[str]: List of unique words
+        """
+        return get_unique_words(
+            self._text,
+            language=self.language,
+            min_length=2
+        )
 
     def get_keywords(
         self,
