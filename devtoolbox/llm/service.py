@@ -1,17 +1,22 @@
 """LLM service layer implementation.
 
 This module provides the LLMService class which offers a high-level
-interface for LLM operations with advanced features like context 
+interface for LLM operations with advanced features like context
 management and fallback handling.
 """
 
-import importlib
-import logging
 from typing import List, Dict, Any
+import logging
+import importlib
+from langchain.prompts import PromptTemplate
 
 from devtoolbox.llm.provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
+
+NAMESPACE = 'devtoolbox.llm'
+PROVIDER_MODULE_NAME = 'provider'
+PROVIDER_CLASS_NAME = 'Provider'
 
 # NOTE(Ray): Special case mappings for provider module names
 # Use this mapping when the provider name needs a specific format
@@ -57,19 +62,22 @@ class LLMService:
             'Config',
             ''
         )
-        
+
         # Use mapping for special cases, otherwise just lowercase
         module_name = PROVIDER_MODULE_NAMES.get(
             config_class_name,
             config_class_name.lower()
         )
-        
+
         # Import provider module
         try:
             module = importlib.import_module(
-                f'devtoolbox.llm.{module_name}_provider'
+                f'{NAMESPACE}.{module_name}_{PROVIDER_MODULE_NAME}'
             )
-            provider_class = getattr(module, f'{config_class_name}Provider')
+            provider_class = getattr(
+                module,
+                f'{config_class_name}{PROVIDER_CLASS_NAME}'
+            )
             return provider_class(self.config)
         except (ImportError, AttributeError) as e:
             raise ValueError(
@@ -217,3 +225,116 @@ class LLMService:
         """
         return self.provider.embed(text, **kwargs)
 
+    def chain_prompts(
+        self,
+        prompts: List[Dict[str, str]],
+        variables: Dict[str, str] = None,
+        verbose: bool = False,
+        **kwargs
+    ) -> Dict[str, str]:
+        """Execute a chain of prompts sequentially.
+
+        Args:
+            prompts: List of dictionaries containing 'name' and 'template' keys
+            variables: Initial variables for the first prompt
+            verbose: Whether to print verbose output
+            **kwargs: Additional arguments for each prompt
+
+        Returns:
+            Dict[str, str]: Dictionary containing all variable values
+
+        Raises:
+            Exception: If any prompt execution fails
+
+        Example:
+            ```python
+            # Create LLM service instance
+            llm = LLMService(config)
+
+            # Define prompt chain
+            prompts = [
+                {
+                    'name': 'title',
+                    'template': 'Generate an attractive title for "{topic}"'
+                },
+                {
+                    'name': 'content',
+                    'template': 'Write a paragraph based on this title: '
+                               '{title}'
+                },
+                {
+                    'name': 'summary',
+                    'template': 'Summarize this content: {content}'
+                }
+            ]
+
+            # Initial variables
+            variables = {
+                'topic': 'The Future of Green Energy'
+            }
+
+            # Execute the chain
+            result = llm.chain_prompts(
+                prompts=prompts,
+                variables=variables,
+                verbose=True
+            )
+
+            # Access results
+            print("Title:", result['title'])
+            print("Content:", result['content'])
+            print("Summary:", result['summary'])
+            ```
+        """
+        if variables is None:
+            variables = {}
+
+        logger.info(f"Starting chain processing with {len(prompts)} prompts")
+        logger.debug(f"Initial variables: {variables}")
+
+        result = {}
+        total_prompts = len(prompts)
+
+        for index, prompt in enumerate(prompts, 1):
+            prompt_name = prompt['name']
+            logger.info(
+                f"Processing prompt {index}/{total_prompts}: {prompt_name}"
+            )
+            logger.debug(f"Current variables: {variables}")
+
+            # Create PromptTemplate
+            template = PromptTemplate(
+                input_variables=list(variables.keys()),
+                template=prompt['template']
+            )
+
+            # Format prompt with variables
+            formatted_prompt = template.format(**variables)
+            logger.debug(f"Formatted prompt: {formatted_prompt}")
+
+            # Get completion from provider
+            try:
+                logger.info(f"Calling LLM for prompt: {prompt_name}")
+                output = self.provider.complete(formatted_prompt, **kwargs)
+                logger.debug(f"LLM response for {prompt_name}: {output}")
+
+                result[prompt_name] = output
+
+                # Update variables for next prompt
+                variables[prompt_name] = output
+                logger.info(
+                    f"Successfully processed prompt {index}/{total_prompts}: "
+                    f"{prompt_name}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to execute prompt {index}/{total_prompts} "
+                    f"({prompt_name}): {str(e)}"
+                )
+                logger.error(f"Current variables: {variables}")
+                logger.error(f"Formatted prompt: {formatted_prompt}")
+                raise Exception(f"Prompt execution failed: {str(e)}")
+
+        logger.info("Chain processing completed successfully")
+        logger.debug(f"Final result: {result}")
+        return result

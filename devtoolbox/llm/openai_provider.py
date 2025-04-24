@@ -54,7 +54,7 @@ class OpenAIConfig(BaseLLMConfig):
     )
     max_tokens: int = field(
         default_factory=lambda: int(
-            os.environ.get('OPENAI_MAX_TOKENS', '2000')
+            os.environ.get('OPENAI_MAX_TOKENS', '8000')
         )
     )
     top_p: float = field(
@@ -114,7 +114,7 @@ class OpenAIConfig(BaseLLMConfig):
     @classmethod
     def from_env(cls) -> 'OpenAIConfig':
         """Create OpenAI configuration from environment variables.
-        
+
         This method is kept for backward compatibility.
         """
         logger.warning(
@@ -266,14 +266,35 @@ class OpenAIProvider(BaseLLMProvider):
         Raises:
             OpenAIError: If completion fails
         """
-        messages = [{"role": "user", "content": prompt}]
-        return self.chat(
-            messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            *args,
-            **kwargs
+        logger.info("Starting text completion")
+        logger.debug(f"Input prompt: {prompt}")
+        logger.debug(
+            f"Parameters - max_tokens: {max_tokens}, "
+            f"temperature: {temperature}"
         )
+        logger.debug(f"Additional kwargs: {kwargs}")
+
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            logger.info("Converting prompt to chat format")
+            response = self.chat(
+                messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                *args,
+                **kwargs
+            )
+            logger.debug(f"Received response: {response}")
+            logger.info("Text completion completed successfully")
+            return response
+        except Exception as e:
+            logger.error(f"Text completion failed: {str(e)}")
+            logger.error(f"Failed prompt: {prompt}")
+            logger.error(
+                f"Parameters - max_tokens: {max_tokens}, "
+                f"temperature: {temperature}"
+            )
+            raise OpenAIError(f"OpenAI API error: {str(e)}")
 
     def embed(self, text: str) -> List[float]:
         """Get embeddings from OpenAI API."""
