@@ -207,14 +207,34 @@ class ObjectStorage(BaseStorage):
             content_length = len(content)
             logger.debug(f"Binary content, length: {content_length} bytes")
 
+        # Add more logger output for better debugging
+        logger.info(
+            f"Preparing to write object to storage: bucket={self.bucket}, "
+            f"path={path}, content_length={content_length}, "
+            f"content_type={write_content_type}"
+        )
+        logger.debug(
+            f"Write content type: {type(write_content)}, "
+            f"Content length: {content_length}"
+        )
         try:
+            logger.info(
+                f"Calling put_object on Minio client for {path} in bucket "
+                f"{self.bucket}"
+            )
             result = self.client.put_object(
                 self.bucket, path, write_content,
-                content_length, content_type=write_content_type)
-            logger.debug(f"Successfully wrote to {path}: {result}")
+                content_length, content_type=write_content_type
+            )
+            logger.info(
+                f"Successfully wrote object to storage: bucket={self.bucket}, "
+                f"path={path}, etag={getattr(result, 'etag', None)}"
+            )
+            logger.debug(f"Put object result: {result}")
             return result
         except Exception as e:
             logger.error(f"Error writing to object storage: {str(e)}")
+            logger.exception(e)
             raise
 
     def exists(self, path, *args, **kwargs):
