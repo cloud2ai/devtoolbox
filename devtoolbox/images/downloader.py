@@ -9,6 +9,12 @@ import cairosvg
 import imagehash
 import requests
 from PIL import Image, UnidentifiedImageError
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type
+)
 
 from devtoolbox.storage import FileStorage
 from devtoolbox.search_engine.duckduckgo import DuckDuckGoImageSearch
@@ -59,6 +65,7 @@ class ImageDownloader:
         remove_duplicate=True,
         enable_search_download=False,
         search_keywords=None,
+        compress=True
     ):
         """Initialize the ImageDownloader with the specified parameters.
 
@@ -109,6 +116,8 @@ class ImageDownloader:
             search_keywords (str, optional): Keywords to use for image search if
                 enable_search_download is True. These keywords help find relevant images.
                 Defaults to None.
+            compress (bool, optional): Whether to compress images after resizing.
+                Defaults to True.
 
         Note:
             The class uses image hashing to detect and filter duplicate images,
@@ -141,6 +150,7 @@ class ImageDownloader:
         self.top_image = top_image
         self.use_cache = use_cache
         self.remove_duplicate = remove_duplicate
+        self.compress = compress
 
         self.enable_search_download = enable_search_download
         self.search_keywords = search_keywords
@@ -202,9 +212,26 @@ class ImageDownloader:
 
         return results
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((
+            UnidentifiedImageError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException
+        )),
+        reraise=True
+    )
     def _download_image(self, idx, image_url):
-        """Download a single image"""
+        """Download a single image with automatic retry mechanism.
 
+        Args:
+            idx (int): Index of the image in the list.
+            image_url (str): URL of the image to download.
+
+        Returns:
+            dict: Image information including content and hash.
+        """
         # Initial a dict to save image content and hash
         image_infos = {
             "index": idx,
@@ -213,8 +240,9 @@ class ImageDownloader:
             "hash": None
         }
 
-        logging.info("Filtering image from %s..." % image_url)
         try:
+            logging.info(f"Downloading image from {image_url}")
+
             save_content = None
             if image_url.startswith('data:image/'):
                 image_data = image_url.split(',')[-1]
@@ -222,52 +250,100 @@ class ImageDownloader:
             else:
                 response = requests.get(
                     image_url, timeout=IMAGE_DOWNLOAD_TIMEOUT)
+                # Check content type
+                content_type = response.headers.get('content-type', '')
+                if not content_type.startswith('image/'):
+                    logging.warning(
+                        f"Invalid content type for {image_url}: {content_type}"
+                    )
+                    return image_infos
                 save_content = response.content
 
             if image_url.endswith('.svg'):
                 save_content = cairosvg.svg2png(bytestring=save_content)
 
-            image_obj = Image.open(BytesIO(save_content))
+            # Verify image content
+            try:
+                image_obj = Image.open(BytesIO(save_content))
+                # Try to load the image to verify it's valid
+                image_obj.load()
+            except Exception as e:
+                logging.warning(
+                    f"Invalid image content from {image_url}: {str(e)}"
+                )
+                return image_infos
+
             width, height = image_obj.size
             aspect_ratio = width / height
 
-            logging.debug("Image info: %s width = %s, height = %s, "
-                          "aspect ratio = %s" % (
-                              image_url, width, height, aspect_ratio))
+            # Output original image information
+            logging.info(
+                "Original image size: %dx%d (%.2f MB)" % (
+                    width,
+                    height,
+                    len(save_content) / (1024 * 1024)
+                )
+            )
 
             image_infos["hash"] = imagehash.dhash(image_obj)
 
             # if image is top image, we still put it in filter images
             # to ensure we can have a image
             if image_url == self.top_image:
-                logging.info("Filtered top image "
-                             "by default %s" % image_url)
+                logging.info("Filtered top image by default %s" % image_url)
                 image_infos["content"] = save_content
+                return image_infos
 
-            is_size_valid = (width >= self.filter_width and
-                             height >= self.filter_height)
+            is_size_valid = (
+                width >= self.filter_width and
+                height >= self.filter_height
+            )
             is_aspect_ratio_valid = (
                 aspect_ratio > ASPECT_RATIO_RANGE[0] and
-                aspect_ratio < ASPECT_RATIO_RANGE[1])
+                aspect_ratio < ASPECT_RATIO_RANGE[1]
+            )
 
             if is_size_valid and is_aspect_ratio_valid:
                 logging.info("Success to filter image %s" % image_url)
                 image_infos["content"] = save_content
+
+                # Output resized image information
+                if self.convert_width and width > self.convert_width:
+                    new_height = int(height * (self.convert_width / width))
+                    logging.info(
+                        "Image will be resized to: %dx%d" % (
+                            self.convert_width,
+                            new_height
+                        )
+                    )
             else:
-                logging.warn(f"Ignore image {image_url} due to valid size: "
-                             f"{is_size_valid}, invalid aspect ratio: "
-                             f"{not is_aspect_ratio_valid}")
+                logging.warning(
+                    f"Ignore image {image_url} due to valid size: "
+                    f"{is_size_valid}, invalid aspect ratio: "
+                    f"{not is_aspect_ratio_valid}"
+                )
+
         except UnidentifiedImageError:
-            logging.warn("Failed to download image from %s, "
-                         "due to download content is not valid "
-                         "image format" % image_url)
+            logging.warning(
+                f"Failed to download image from {image_url}, "
+                f"due to invalid image format"
+            )
+            raise
         except requests.exceptions.Timeout:
-            logging.warn("Skip to download image from %s "
-                         "due to requests timeout" % image_url)
+            logging.warning(f"Timeout downloading image from {image_url}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logging.warning(
+                f"Network error downloading image from {image_url}: "
+                f"{str(e)}"
+            )
+            raise
         except Exception as e:
-            logging.warn("Failed to download image from %s, "
-                         "due to: %s" % (image_url, e))
-            # logging.exception(e)
+            logging.warning(
+                f"Failed to download image from {image_url}, "
+                f"due to: {str(e)}"
+            )
+            raise
 
         return image_infos
 
@@ -313,10 +389,23 @@ class ImageDownloader:
 
                 image_converter = ImageConverter(save_content)
                 try:
+                    # First resize the image
                     save_content = image_converter.resize(self.convert_width)
+                    # Then compress the resized image if enabled
+                    if self.compress:
+                        save_content = image_converter.compress_image(
+                            Image.open(BytesIO(save_content)),
+                            image_path
+                        )
+                        # Output compressed image information
+                        logging.info(
+                            "Compressed image size: %.2f MB" % (
+                                len(save_content) / (1024 * 1024)
+                            )
+                        )
                 except Exception as e:
                     logging.warn(f"Ignore to save image "
-                                 f"{image_url} due to: {e}")
+                               f"{image_url} due to: {e}")
                     continue
 
                 self.storage.write(

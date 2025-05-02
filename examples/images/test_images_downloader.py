@@ -51,7 +51,8 @@ def main():
         path_prefix=str(download_dir),
         base_filename="sample",
         max_download_num=3,
-        storage=storage  # Use our specified storage
+        storage=storage,  # Use our specified storage
+        use_cache=False  # Disable caching to always download fresh images
     )
 
     try:
