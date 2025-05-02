@@ -72,7 +72,9 @@ class BaseStorage:
     def cp_from_path(self, src_full_path, dest_path,
                      content_type=TEXT_CONTENT_TYPE, *args, **kwargs):
         """Copy/Upload file from given path."""
-        raise NotImplementedError("cp_from_path() method needs to be implemented")
+        raise NotImplementedError(
+            "cp_from_path() method needs to be implemented"
+        )
 
     def ls(self, path=None, pattern="*"):
         """List all files and return their full paths."""
@@ -168,13 +170,48 @@ class ObjectStorage(BaseStorage):
         super().__init__(base_path, *args, **kwargs)
 
     def read(self, path, *args, **kwargs):
-        """Read content from object storage."""
-        logger.info(f"Reading from object storage: bucket={self.bucket}, "
-                    f"path={path}")
+        """Read content from object storage.
+
+        Args:
+            path (str): The path to the object in storage.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+                content_type (str): The content type of the file. If not
+                                  provided, will try to determine from file
+                                  extension.
+
+        Returns:
+            str or bytes: The content of the file. For text files, returns a
+                        string. For binary files, returns bytes.
+
+        Raises:
+            Exception: If there is an error reading the file.
+        """
+        logger.info(
+            f"Reading from object storage: bucket={self.bucket}, path={path}"
+        )
         try:
             response = self.client.get_object(self.bucket, path)
-            data = response.data.decode()
-            logger.debug(f"Successfully read {len(data)} bytes from {path}")
+            data = response.data
+
+            # Get content type from kwargs or try to determine from file
+            # extension
+            content_type = kwargs.get('content_type')
+            if not content_type:
+                content_type = self._get_content_type_from_path(path)
+
+            # Only decode if it's a text content type
+            if content_type in TEXT_CONTENT_TYPES:
+                data = data.decode()
+                logger.debug(
+                    f"Successfully read and decoded {len(data)} bytes "
+                    f"from {path}"
+                )
+            else:
+                logger.debug(
+                    f"Successfully read {len(data)} bytes from {path}"
+                )
+
             return data
         except Exception as e:
             logger.error(f"Error reading from object storage: {str(e)}")
@@ -184,6 +221,45 @@ class ObjectStorage(BaseStorage):
                 logger.debug(f"Closing connection for {path}")
                 response.close()
                 response.release_conn()
+
+    def _get_content_type_from_path(self, path):
+        """Determine content type from file extension.
+
+        Args:
+            path (str): The file path.
+
+        Returns:
+            str: The content type based on file extension.
+        """
+        # Get file extension
+        ext = os.path.splitext(path)[1].lower()
+
+        # Map common extensions to content types
+        content_type_map = {
+            '.txt': TEXT_CONTENT_TYPE,
+            '.md': TEXT_CONTENT_TYPE,
+            '.json': TEXT_CONTENT_TYPE,
+            '.csv': TEXT_CONTENT_TYPE,
+            '.docx': (
+                'application/vnd.openxmlformats-officedocument.'
+                'wordprocessingml.document'
+            ),
+            '.xlsx': (
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'
+            ),
+            '.pptx': (
+                'application/vnd.openxmlformats-officedocument.'
+                'presentationml.presentation'
+            ),
+            '.pdf': 'application/pdf',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+        }
+
+        return content_type_map.get(ext, 'application/octet-stream')
 
     def write(self, path, content,
               content_type=TEXT_CONTENT_TYPE, *args, **kwargs):
