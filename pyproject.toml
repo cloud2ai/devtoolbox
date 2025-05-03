@@ -30,7 +30,13 @@ dependencies = [
     "pydub>=0.25.1",
     "cairosvg>=2.7.1",
     "boto3>=1.34.34",
-    "beautifulsoup4>=4.12.2"
+    "beautifulsoup4>=4.12.2",
+    "minio>=7.2.0",
+    "duckduckgo-search>=4.1.1",
+    "imagehash>=4.3.1",
+    "tenacity>=8.2.3",
+    "dataclasses>=0.8",
+    "langid>=1.1.6"
 ]
 
 # Package configuration
@@ -43,6 +49,8 @@ packages = ["devtoolbox"]
 llm = [
     "openai>=1.12.0",
     "langchain>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "langchain-core>=0.1.10",
     "tiktoken>=0.5.2",
     "transformers>=4.36.2"
 ]
@@ -50,7 +58,8 @@ llm = [
 # Speech related dependencies
 speech = [
     "pydub>=0.25.1",
-    "whisper>=1.0.0"
+    "whisper>=1.0.0",
+    "azure-cognitiveservices-speech>=1.32.0"
 ]
 
 # Development dependencies
