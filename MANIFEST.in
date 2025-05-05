@@ -1,0 +1,12 @@
+# Include all Python files and package data
+recursive-include devtoolbox *.py
+recursive-include devtoolbox *.json
+recursive-include devtoolbox *.yaml
+recursive-include devtoolbox *.yml
+recursive-include devtoolbox *.txt
+recursive-include devtoolbox *.md
+
+# Include project files
+include README.md
+include LICENSE
+include pyproject.toml

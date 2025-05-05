@@ -41,6 +41,8 @@ dependencies = [
 # Package configuration
 [tool.setuptools]
 packages = ["devtoolbox"]
+include-package-data = true
+zip-safe = false
 
 # Optional dependencies
 [project.optional-dependencies]
