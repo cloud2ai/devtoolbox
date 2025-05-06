@@ -170,9 +170,10 @@ class ImageDownloader:
         if not self.images:
             logging.warning("No images provided for downloading.")
 
-        if not os.path.exists(self.path_prefix):
-            logging.info(f"Creating directory: {self.path_prefix}")
-            os.makedirs(self.path_prefix, exist_ok=True)
+        full_path_prefix = self.storage.full_path(self.path_prefix)
+        if not os.path.exists(full_path_prefix):
+            logging.info(f"Creating directory: {full_path_prefix}")
+            os.makedirs(full_path_prefix, exist_ok=True)
 
     def _parallel_download_images(self, all_images):
         """Download image in parallel model
@@ -376,16 +377,17 @@ class ImageDownloader:
             image_filename = "%s-%s.png" % (
                 self.base_filename, save_index)
             image_path = os.path.join(self.path_prefix, image_filename)
+            image_full_path = self.storage.full_path(image_path)
 
             image_url = collect_image["image_url"]
             save_content = collect_image["content"]
             logging.info("Downloading image from %s to %s" % (
-                image_url, image_path))
+                image_url, image_full_path))
 
-            if self.storage.exists(image_path) and self.use_cache:
-                logging.info("Image already exists in %s" % image_path)
+            if self.storage.exists(image_full_path) and self.use_cache:
+                logging.info("Image already exists in %s" % image_full_path)
             else:
-                logging.info("Writing image to path %s" % image_path)
+                logging.info("Writing image to path %s" % image_full_path)
 
                 image_converter = ImageConverter(save_content)
                 try:
@@ -395,7 +397,7 @@ class ImageDownloader:
                     if self.compress:
                         save_content = image_converter.compress_image(
                             Image.open(BytesIO(save_content)),
-                            image_path
+                            image_full_path
                         )
                         # Output compressed image information
                         logging.info(
