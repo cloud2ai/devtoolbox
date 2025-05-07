@@ -36,6 +36,7 @@ class BaseStorage:
     - Getting full file paths
     - Copying files
     - Listing files
+    - Removing files or directories
 
     Storage implementations should inherit from this class and implement
     all methods.
@@ -79,6 +80,20 @@ class BaseStorage:
     def ls(self, path=None, pattern="*"):
         """List all files and return their full paths."""
         raise NotImplementedError("ls() method needs to be implemented")
+
+    def rm(self, path, recursive=False):
+        """Remove a file or directory.
+
+        Args:
+            path (str): The path to remove.
+            recursive (bool, optional): If True, recursively remove directory
+                and its contents. Defaults to False.
+
+        Raises:
+            NotImplementedError: This method needs to be implemented by
+                subclasses.
+        """
+        raise NotImplementedError("rm() method needs to be implemented")
 
 
 class ObjectStorage(BaseStorage):
@@ -387,6 +402,59 @@ class ObjectStorage(BaseStorage):
             logger.error(f"Error listing objects: {str(e)}")
             raise
 
+    def rm(self, path, recursive=False):
+        """Remove an object or prefix (directory) from object storage.
+
+        Args:
+            path (str): The path to remove.
+            recursive (bool, optional): If True, recursively remove all objects
+                under the prefix. Defaults to False.
+
+        Raises:
+            Exception: If there is an error removing the object(s).
+        """
+        logger.info(
+            f"Removing from object storage: bucket={self.bucket}, "
+            f"path={path} (recursive={recursive})"
+        )
+
+        try:
+            if recursive:
+                # List all objects under the prefix
+                objects = self.client.list_objects(
+                    self.bucket,
+                    prefix=path,
+                    recursive=True
+                )
+                # Remove all objects
+                for obj in objects:
+                    self.client.remove_object(self.bucket, obj.object_name)
+                    logger.debug(
+                        f"Removed object: {obj.object_name}"
+                    )
+                logger.info(
+                    f"Recursively removed all objects under prefix: {path}"
+                )
+            else:
+                # Check if it's a prefix (directory)
+                objects = list(self.client.list_objects(
+                    self.bucket,
+                    prefix=path,
+                    recursive=False
+                ))
+                if len(objects) > 1:
+                    raise IsADirectoryError(
+                        f"Cannot remove prefix '{path}' without recursive=True"
+                    )
+                # Remove single object
+                self.client.remove_object(self.bucket, path)
+                logger.debug(f"Removed object: {path}")
+        except Exception as e:
+            logger.error(
+                f"Error removing from object storage: {str(e)}"
+            )
+            raise
+
 
 class FileStorage(BaseStorage):
     """File system storage implementation.
@@ -493,4 +561,41 @@ class FileStorage(BaseStorage):
         except Exception as e:
             logger.error(f"Error listing files in: {target_path}, "
                          f"error: {str(e)}")
+            raise
+
+    def rm(self, path, recursive=False):
+        """Remove a file or directory.
+
+        Args:
+            path (str): The path to remove.
+            recursive (bool, optional): If True, recursively remove directory
+                and its contents. Defaults to False.
+
+        Raises:
+            FileNotFoundError: If the path does not exist.
+            IsADirectoryError: If trying to remove a directory without
+                recursive=True.
+            PermissionError: If there are permission issues.
+            OSError: For other operating system errors.
+        """
+        full_path = self.full_path(path)
+        logger.info(f"Removing path: {full_path} (recursive={recursive})")
+
+        try:
+            if os.path.isfile(full_path):
+                os.remove(full_path)
+                logger.debug(f"Removed file: {full_path}")
+            elif os.path.isdir(full_path):
+                if recursive:
+                    shutil.rmtree(full_path)
+                    logger.debug(f"Recursively removed directory: {full_path}")
+                else:
+                    raise IsADirectoryError(
+                        f"Cannot remove directory '{full_path}' without "
+                        f"recursive=True"
+                    )
+            else:
+                raise FileNotFoundError(f"Path not found: {full_path}")
+        except Exception as e:
+            logger.error(f"Error removing path {full_path}: {str(e)}")
             raise
