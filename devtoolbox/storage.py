@@ -455,6 +455,118 @@ class ObjectStorage(BaseStorage):
             )
             raise
 
+    def download(
+        self,
+        path,
+        dest_path,
+        chunk_size=8*1024*1024,
+        show_progress=True
+    ):
+        """Download an object from storage with support for chunked download,
+        progress display and resume capability.
+
+        Args:
+            path (str): The path of the object in storage.
+            dest_path (str): The local path where the object will be saved.
+            chunk_size (int, optional): Size of each chunk in bytes.
+                Defaults to 8MB.
+            show_progress (bool, optional): Whether to display download
+                progress. Defaults to True.
+
+        Returns:
+            str: The path where the file was saved.
+
+        Raises:
+            Exception: If there is an error during download.
+        """
+        logger.info(
+            f"Downloading object: bucket={self.bucket}, path={path} "
+            f"to {dest_path}"
+        )
+
+        try:
+            # Get object info
+            stat = self.client.stat_object(self.bucket, path)
+            total_size = stat.size
+            logger.debug(f"Object size: {total_size} bytes")
+
+            # Create temporary file for download
+            temp_path = f"{dest_path}.download"
+            mode = 'ab' if os.path.exists(temp_path) else 'wb'
+            downloaded_size = (
+                os.path.getsize(temp_path) if mode == 'ab' else 0
+            )
+
+            # Calculate remaining size and offset
+            remaining_size = total_size - downloaded_size
+            if remaining_size <= 0:
+                logger.info("File already downloaded completely")
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+                os.rename(temp_path, dest_path)
+                return dest_path
+
+            logger.info(
+                f"Resuming download from {downloaded_size} bytes "
+                f"({remaining_size} bytes remaining)"
+            )
+
+            # Open file for writing
+            with open(temp_path, mode) as f:
+                # Get object data
+                response = self.client.get_object(
+                    self.bucket,
+                    path,
+                    offset=downloaded_size
+                )
+
+                # Download chunks
+                downloaded = downloaded_size
+                last_percent = -1
+
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    f.write(chunk)
+                    downloaded += len(chunk)
+
+                    # Show progress
+                    if show_progress:
+                        percent = int((downloaded / total_size) * 100)
+                        if percent != last_percent:
+                            print(
+                                f"\rDownloading: {percent}% "
+                                f"({downloaded}/{total_size} bytes)",
+                                end=""
+                            )
+                            last_percent = percent
+
+                if show_progress:
+                    print()  # New line after progress
+
+            # Rename temporary file to final destination
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            os.rename(temp_path, dest_path)
+
+            logger.info(
+                f"Successfully downloaded {downloaded} bytes to {dest_path}"
+            )
+            return dest_path
+
+        except Exception as e:
+            logger.error(f"Error downloading object: {str(e)}")
+            # Clean up temporary file if it exists
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+        finally:
+            if 'response' in locals():
+                response.close()
+                response.release_conn()
+
 
 class FileStorage(BaseStorage):
     """File system storage implementation.
