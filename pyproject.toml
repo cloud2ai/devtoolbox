@@ -17,25 +17,45 @@ requires-python = ">=3.8"
 
 # Core dependencies
 dependencies = [
+    # JIRA API client for issue tracking and project management
+    # Used in: devtoolbox/api_clients/jira_client.py
     "jira>=3.5.1",
+
+    # Markdown processing and conversion
+    # Used in: devtoolbox/markdown/* (formatter.py, converter.py, image_downloader.py)
     "markdown>=3.5.1",
+
+    # GitLab API client for repository management
+    # Used in: devtoolbox/api_clients/gitlab_client.py
     "python-gitlab>=3.15.0",
+
+    # Document format conversion
+    # Used in: devtoolbox/markdown/converter.py
     "pypandoc>=1.12",
+
+    # HTTP client for API requests
+    # Used in: devtoolbox/api_clients/*, devtoolbox/search_engine/*
     "requests>=2.31.0",
+
+    # Chinese pinyin conversion
+    # Used in: devtoolbox/text/* (text processing utilities)
     "pypinyin>=0.48.0",
+
+    # Retry mechanism for API calls
+    # Used in: devtoolbox/api_clients/*, devtoolbox/search_engine/*
     "retry>=0.9.2",
-    "Pillow>=10.2.0",
-    "spacy>=3.7.2",
-    "langdetect>=1.0.9",
-    "pydub>=0.25.1",
-    "cairosvg>=2.7.1",
-    "boto3>=1.34.34",
+
+    # HTML parsing
+    # Used in: devtoolbox/search_engine/*, devtoolbox/web/* (web scraping utilities)
     "beautifulsoup4>=4.12.2",
-    "minio>=7.2.0",
+
+    # DuckDuckGo search API
+    # Used in: devtoolbox/search_engine/duckduckgo.py
     "duckduckgo-search>=4.1.1",
-    "imagehash>=4.3.1",
-    "tenacity>=8.2.3",
-    "langid>=1.1.6"
+
+    # Advanced retry mechanism
+    # Used in: devtoolbox/llm/* (LLM providers)
+    "tenacity>=8.2.3"
 ]
 
 # Package configuration
@@ -46,35 +66,109 @@ zip-safe = false
 
 # Optional dependencies
 [project.optional-dependencies]
-# LLM related dependencies
-llm = [
-    "openai>=1.12.0",
-    "langchain>=0.1.0",
-    "langchain-openai>=0.0.5",
-    "langchain-core>=0.1.10",
-    "tiktoken>=0.5.2",
-    "transformers>=4.36.2"
+# Storage related dependencies
+storage = [
+    # MinIO client for object storage
+    # Used in: devtoolbox/storage.py
+    "minio>=7.2.0"
 ]
 
 # Speech related dependencies
 speech = [
+    # Audio processing
+    # Used in: devtoolbox/speech/* (speech providers)
     "pydub>=0.25.1",
+
+    # OpenAI Whisper for speech recognition
+    # Used in: devtoolbox/speech/whisper_provider.py
     "whisper>=1.0.0",
+
+    # Azure Speech Services
+    # Used in: devtoolbox/speech/azure_provider.py
     "azure-cognitiveservices-speech>=1.32.0"
+]
+
+# Image processing related dependencies
+image = [
+    # Image processing
+    # Used in: devtoolbox/images/*, devtoolbox/markdown/image_downloader.py
+    "Pillow>=10.2.0",
+
+    # SVG processing
+    # Used in: devtoolbox/images/* (image processing utilities)
+    "cairosvg>=2.7.1",
+
+    # Image hashing for similarity detection
+    # Used in: devtoolbox/images/* (image processing utilities)
+    "imagehash>=4.3.1"
+]
+
+# LLM related dependencies
+llm = [
+    # OpenAI API client
+    # Used in: devtoolbox/llm/openai_provider.py
+    "openai>=1.12.0",
+
+    # LangChain framework
+    # Used in: devtoolbox/llm/* (LLM providers and utilities)
+    "langchain>=0.1.0",
+
+    # LangChain OpenAI integration
+    # Used in: devtoolbox/llm/* (LLM providers)
+    "langchain-openai>=0.0.5",
+
+    # LangChain core functionality
+    # Used in: devtoolbox/llm/* (LLM providers)
+    "langchain-core>=0.1.10",
+
+    # OpenAI tokenizer
+    # Used in: devtoolbox/llm/* (token counting utilities)
+    "tiktoken>=0.5.2",
+
+    # Hugging Face Transformers
+    # Used in: devtoolbox/llm/* (model loading and inference)
+    "transformers>=4.36.2",
+
+    # NLP processing
+    # Used in: devtoolbox/text_splitter/* (text processing utilities)
+    "spacy>=3.7.2",
+
+    # Language detection
+    # Used in: devtoolbox/text_splitter/* (text processing utilities)
+    "langid>=1.1.6"
 ]
 
 # Development dependencies
 dev = [
+    # Testing framework
+    # Used in: tests/* (all test files)
     "pytest>=8.0.0",
+
+    # Code formatting
+    # Used in: .pre-commit-config.yaml
     "black>=24.1.0",
+
+    # Test coverage
+    # Used in: tests/* (coverage reporting)
     "pytest-cov>=4.1.0",
+
+    # Type checking
+    # Used in: mypy.ini
     "mypy>=1.8.0",
+
+    # Import sorting
+    # Used in: .pre-commit-config.yaml
     "isort>=5.13.0"
 ]
 
 # Documentation dependencies
 docs = [
+    # Documentation generator
+    # Used in: mkdocs.yml
     "mkdocs>=1.5.3",
+
+    # API documentation
+    # Used in: mkdocs.yml
     "mkdocstrings>=0.24.0"
 ]
 
