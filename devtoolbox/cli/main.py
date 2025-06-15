@@ -4,7 +4,9 @@ Main CLI entry point for devtoolbox
 import typer
 
 # Import and register subcommands
-from devtoolbox.cli.commands import webhook, storage, jira, speech, whisper
+from devtoolbox.cli.commands import (
+    webhook, storage, jira, speech, whisper, search
+)
 
 app = typer.Typer(
     name="devtoolbox",
@@ -25,12 +27,24 @@ app.add_typer(jira.app, name="jira", help="JIRA related commands")
 app.add_typer(speech.app, name="speech", help="Speech related commands")
 
 # Register whisper commands
-app.add_typer(whisper.app, name="whisper", help="Whisper model management commands")
+app.add_typer(
+    whisper.app,
+    name="whisper",
+    help="Whisper model management commands"
+)
+
+# Register search commands
+app.add_typer(
+    search.app,
+    name="search",
+    help="Search engine related commands"
+)
 
 
 def main():
     """Main entry point for the CLI"""
     app()
+
 
 if __name__ == "__main__":
     main()
