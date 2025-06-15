@@ -5,7 +5,7 @@ import typer
 
 # Import and register subcommands
 from devtoolbox.cli.commands import (
-    webhook, storage, jira, speech, whisper, search
+    webhook, storage, jira, speech, whisper, search, images
 )
 
 app = typer.Typer(
@@ -38,6 +38,13 @@ app.add_typer(
     search.app,
     name="search",
     help="Search engine related commands"
+)
+
+# Register images commands
+app.add_typer(
+    images.app,
+    name="images",
+    help="Image processing commands"
 )
 
 
