@@ -161,7 +161,7 @@ class AzureOpenAIConfig(OpenAIConfig):
     @classmethod
     def from_env(cls) -> 'AzureOpenAIConfig':
         """Create Azure OpenAI configuration from environment variables.
-        
+
         This method is kept for backward compatibility.
         """
         logger.warning(
@@ -247,7 +247,7 @@ class AzureOpenAIProvider(OpenAIProvider):
         except Exception as e:
             if "rate_limit" in str(e).lower():
                 raise OpenAIRateLimitError("Rate limit exceeded")
-            raise OpenAIError(f"Azure OpenAI API error: {str(e)}")
+            raise OpenAIError("Azure OpenAI API error")
 
     def complete(
         self,

@@ -5,7 +5,7 @@ import typer
 
 # Import and register subcommands
 from devtoolbox.cli.commands import (
-    webhook, storage, jira, speech, whisper, search, images, markdown
+    webhook, storage, jira, speech, whisper, search, images, markdown, llm
 )
 
 app = typer.Typer(
@@ -53,6 +53,9 @@ app.add_typer(
     name="markdown",
     help="Markdown processing commands"
 )
+
+# Register llm commands
+app.add_typer(llm.app, name="llm")
 
 
 def main():
