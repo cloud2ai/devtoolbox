@@ -15,7 +15,7 @@ from pydub import AudioSegment
 from pydub.silence import split_on_silence
 import pysubs2
 
-from devtoolbox.text.splitter import TokenSplitter
+from devtoolbox.text_splitter.token_splitter import TokenSplitter
 from devtoolbox.speech.provider import BaseSpeechConfig
 
 logger = logging.getLogger(__name__)
@@ -249,10 +249,10 @@ class SpeechService:
         Returns:
             List[str]: List of text segments
         """
-        splitter = TokenSplitter()
-        paragraphs = splitter.split_text(text)
+        splitter = TokenSplitter(text)
+        paragraphs = splitter.split()
         logger.debug("Text split into %d paragraphs", len(paragraphs))
-        return [p.content for p in paragraphs]
+        return [p.text for p in paragraphs]
 
     def _format_as_text(
         self,

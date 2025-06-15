@@ -55,7 +55,15 @@ dependencies = [
 
     # Advanced retry mechanism
     # Used in: devtoolbox/llm/* (LLM providers)
-    "tenacity>=8.2.3"
+    "tenacity>=8.2.3",
+
+    # CLI framework
+    # Used in: devtoolbox/cli/* (command line interface)
+    "typer>=0.9.0",
+
+    # YAML support
+    # Used in: devtoolbox/cli/commands/webhook.py
+    "pyyaml>=6.0.1"
 ]
 
 # Package configuration
@@ -81,7 +89,7 @@ speech = [
 
     # OpenAI Whisper for speech recognition
     # Used in: devtoolbox/speech/whisper_provider.py
-    "whisper>=1.0.0",
+    "openai-whisper>=20231117",
 
     # Azure Speech Services
     # Used in: devtoolbox/speech/azure_provider.py
@@ -173,4 +181,5 @@ docs = [
 ]
 
 [project.scripts]
-devtoolbox-setup-nlp = "devtoolbox.cmd.setup_nlp:download_spacy_models"
+devtoolbox-setup-nlp = "devtoolbox.cli.setup_nlp:download_spacy_models"
+devtoolbox = "devtoolbox.cli.main:main"

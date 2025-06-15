@@ -178,3 +178,4 @@ examples/*.docx
 examples/*.md
 examples/downloaded_images/
 examples/test_speech_providers_output/
+examples/test_storage/*.mp3

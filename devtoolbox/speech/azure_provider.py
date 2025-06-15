@@ -91,7 +91,9 @@ class AzureConfig(BaseSpeechConfig):
         default_factory=lambda: os.environ.get('AZURE_SPEECH_REGION')
     )
     voice_name: Optional[str] = field(
-        default_factory=lambda: os.environ.get('AZURE_SPEECH_VOICE')
+        default_factory=lambda: os.environ.get(
+            'AZURE_SPEECH_VOICE', 'zh-CN-YunjianNeural'
+        )
     )
     language: str = field(
         default_factory=lambda: os.environ.get('AZURE_SPEECH_LANGUAGE', 'auto')
@@ -173,7 +175,7 @@ class AzureConfig(BaseSpeechConfig):
     @classmethod
     def from_env(cls) -> 'AzureConfig':
         """Create Azure configuration from environment variables.
-        
+
         This method is kept for backward compatibility.
         """
         logger.warning(
@@ -332,7 +334,10 @@ class AzureProvider(BaseSpeechProvider):
         # Use configured voice if not specified
         voice_name = speaker or self.config.voice_name
         if not voice_name:
-            raise ValueError("Voice name is required")
+            raise ValueError(
+                "Voice name is required. Set it either in constructor "
+                "or through AZURE_SPEECH_VOICE environment variable"
+            )
 
         try:
             # Prepare SSML text
