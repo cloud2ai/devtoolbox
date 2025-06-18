@@ -301,7 +301,7 @@ However, as I worked on more and more projects, I realized that I hadn't properl
 
    **Markdown Processing**
    ```bash
-   # Download images from markdown file
+   # Download images from markdown file and replace remote URLs with local paths
    devtoolbox markdown download-images sample_data/markdown/input.md \
      --output-dir sample_data/markdown/images
    ```

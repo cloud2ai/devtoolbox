@@ -42,7 +42,15 @@ def download_images(
     ),
 ):
     """
-    Download images from markdown file
+    Download images from markdown file and replace remote URLs with local paths
+
+    This command will:
+    1. Download all images referenced in the markdown file
+    2. Save them to the specified output directory (default: 'images'
+       subdirectory)
+    3. Replace remote image URLs in the markdown content with local
+       relative paths
+    4. Update the markdown file with the new local image references
     """
     # Convert to Path object
     md_path = Path(markdown_file)
@@ -65,11 +73,12 @@ def download_images(
         # Initialize markdown processor
         processor = MarkdownImageDownloader(str(md_path))
 
-        # Download images
+        # Download images and update markdown content
         processor.download_images()
 
         typer.echo(f"Successfully processed markdown file: {markdown_file}")
-        typer.echo(f"Images have been downloaded to: {output_path}")
+        typer.echo("Images have been downloaded and markdown content updated")
+        typer.echo(f"Images saved to: {output_path}")
 
     except Exception as e:
         logger.error(
