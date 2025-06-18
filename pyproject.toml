@@ -111,6 +111,17 @@ image = [
     "imagehash>=4.3.1"
 ]
 
+# OCR related dependencies
+ocr = [
+    # Azure Document Intelligence
+    # Used in: devtoolbox/ocr/azure_provider.py
+    "azure-ai-documentintelligence>=1.0.0",
+
+    # NumPy for array operations
+    # Used in: devtoolbox/ocr/azure_provider.py
+    "numpy>=1.24.0"
+]
+
 # LLM related dependencies
 llm = [
     # OpenAI API client

@@ -24,6 +24,12 @@ However, as I worked on more and more projects, I realized that I hadn't properl
   - Unified interface for multiple LLM providers
   - Configurable rate limiting and retry mechanisms
 
+- **OCR (Optical Character Recognition)**
+  - Azure Computer Vision integration
+  - Text recognition from images
+  - Support for multiple image formats
+  - Configurable recognition options
+
 - **Speech Processing**
   - Azure Speech Services integration
   - VolcEngine Speech Services integration
@@ -75,12 +81,29 @@ However, as I worked on more and more projects, I realized that I hadn't properl
 
    # Install specific features
    pip install devtoolbox[llm]      # LLM features
+   pip install devtoolbox[ocr]      # OCR features
    pip install devtoolbox[speech]   # Speech processing features
    pip install devtoolbox[image]    # Image processing features
    pip install devtoolbox[storage]  # Storage features
    ```
 
 2. **Basic Usage Examples**
+
+   **OCR Module**
+   ```python
+   from devtoolbox.ocr import OCRService
+   from devtoolbox.ocr import AzureConfig
+
+   # Initialize with Azure
+   config = AzureConfig(
+       endpoint="your-endpoint",
+       key="your-key"
+   )
+   service = OCRService(config)
+
+   # Recognize text from image
+   result = service.recognize("path/to/image.jpg")
+   ```
 
    **LLM Module**
    ```python
@@ -133,6 +156,20 @@ However, as I worked on more and more projects, I realized that I hadn't properl
 
    The devtoolbox provides a comprehensive command line interface for various
    operations:
+
+   **OCR Operations**
+   ```bash
+   # Configure environment variables for OCR services
+   # For Azure Document Intelligence:
+   export AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT="your-endpoint"
+   export AZURE_DOCUMENT_INTELLIGENCE_KEY="your-key"
+
+   # Recognize text from image
+   devtoolbox ocr recognize sample_data/ocr/input.jpg \
+     --output sample_data/ocr/output.txt \
+     --provider azure \
+     --format txt
+   ```
 
    **Storage Operations**
    ```bash
