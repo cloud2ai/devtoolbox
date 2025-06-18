@@ -1,9 +1,7 @@
 """CLI commands package."""
 
-from devtoolbox.cli.commands import (
-    webhook, storage, jira, speech, whisper, search, images, markdown, llm,
-    ocr
-)
+# Don't import modules here to avoid slow startup
+# Modules will be imported when needed in main.py
 
 __all__ = [
     'webhook',
