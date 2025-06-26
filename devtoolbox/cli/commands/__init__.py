@@ -13,5 +13,6 @@ __all__ = [
     'images',
     'markdown',
     'llm',
-    'ocr'
+    'ocr',
+    'github'
 ]

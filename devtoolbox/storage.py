@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import fnmatch
+from datetime import timedelta
 
 from minio import Minio, error
 
@@ -391,8 +392,8 @@ class ObjectStorage(BaseStorage):
         try:
             for obj in self.client.list_objects(
                     self.bucket, prefix=prefix, recursive=True):
-                if pattern == "*" or glob.fnmatch.fnmatch(obj.object_name,
-                                                          pattern):
+                if pattern == "*" or fnmatch.fnmatch(obj.object_name,
+                                                     pattern):
                     objects.append(obj.object_name)
                     logger.debug(f"Found object: {obj.object_name}")
 
@@ -566,6 +567,103 @@ class ObjectStorage(BaseStorage):
             if 'response' in locals():
                 response.close()
                 response.release_conn()
+
+    def get_presigned_upload_url(self, path, expires_minutes=10):
+        """Generate a presigned URL for uploading objects to storage.
+
+        This method creates a temporary URL that allows direct upload to
+        object storage without requiring credentials in the client code.
+        The URL is valid for a specified duration and can be used for
+        PUT requests to upload files.
+
+        Args:
+            path (str): The path where the object will be stored in the
+                bucket.
+            expires_minutes (int, optional): The number of minutes the URL
+                should be valid. Defaults to 10 minutes.
+
+        Returns:
+            str: A presigned URL that can be used for uploading objects.
+
+        Raises:
+            Exception: If there is an error generating the presigned URL.
+
+        Example:
+            >>> storage = ObjectStorage("my-bucket", endpoint="...", ...)
+            >>> url = storage.get_presigned_upload_url("uploads/file.txt", 15)
+            >>> print(f"Upload URL valid for 15 minutes: {url}")
+        """
+        logger.info(
+            f"Generating presigned upload URL for: bucket={self.bucket}, "
+            f"path={path}, expires={expires_minutes} minutes"
+        )
+
+        try:
+            # Generate presigned PUT URL
+            url = self.client.presigned_put_object(
+                self.bucket,
+                path,
+                expires=timedelta(minutes=expires_minutes)
+            )
+
+            logger.debug(
+                f"Successfully generated presigned upload URL: {url}"
+            )
+            return url
+
+        except Exception as e:
+            logger.error(
+                f"Error generating presigned upload URL: {str(e)}"
+            )
+            raise
+
+    def get_presigned_download_url(self, path, expires_minutes=10):
+        """Generate a presigned URL for downloading objects from storage.
+
+        This method creates a temporary URL that allows direct download
+        from object storage without requiring credentials in the client
+        code. The URL is valid for a specified duration and can be used
+        for GET requests to download files.
+
+        Args:
+            path (str): The path of the object in the bucket.
+            expires_minutes (int, optional): The number of minutes the URL
+                should be valid. Defaults to 10 minutes.
+
+        Returns:
+            str: A presigned URL that can be used for downloading objects.
+
+        Raises:
+            Exception: If there is an error generating the presigned URL.
+
+        Example:
+            >>> storage = ObjectStorage("my-bucket", endpoint="...", ...)
+            >>> url = storage.get_presigned_download_url("uploads/file.txt", 30)
+            >>> print(f"Download URL valid for 30 minutes: {url}")
+        """
+        logger.info(
+            f"Generating presigned download URL for: bucket={self.bucket}, "
+            f"path={path}, expires={expires_minutes} minutes"
+        )
+
+        try:
+            # Generate presigned GET URL
+            url = self.client.presigned_get_object(
+                self.bucket,
+                path,
+                expires=timedelta(minutes=expires_minutes)
+            )
+
+            logger.debug(
+                f"Successfully generated presigned download URL: {url}"
+            )
+            return url
+
+        except Exception as e:
+            logger.error(
+                f"Error generating presigned download URL: {str(e)}"
+            )
+            raise
 
 
 class FileStorage(BaseStorage):
