@@ -21,6 +21,10 @@ dependencies = [
     # Used in: devtoolbox/api_clients/jira_client.py
     "jira>=3.5.1",
 
+    # GitHub API client for repository management
+    # Used in: devtoolbox/api_clients/github_client.py
+    "PyGithub>=2.1.1",
+
     # Markdown processing and conversion
     # Used in: devtoolbox/markdown/* (formatter.py, converter.py, image_downloader.py)
     "markdown>=3.5.1",

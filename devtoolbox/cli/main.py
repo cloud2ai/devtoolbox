@@ -6,7 +6,7 @@ import typer
 # Import and register subcommands
 from devtoolbox.cli.commands import (
     webhook, storage, jira, speech, whisper, search, images, markdown, llm,
-    ocr
+    ocr, github
 )
 
 app = typer.Typer(
@@ -60,6 +60,9 @@ app.add_typer(llm.app, name="llm")
 
 # Register ocr commands
 app.add_typer(ocr.app, name="ocr", help="OCR related commands")
+
+# Register github commands
+app.add_typer(github.app, name="github", help="GitHub related commands")
 
 
 def main():
