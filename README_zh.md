@@ -29,7 +29,7 @@
   - VolcEngine 语音服务集成
   - Whisper 集成
   - 文本转语音（TTS）功能
-  - 语音转文本（STT）功能
+  - 语音转文本（STT）功能，包含详细的元数据输出
 
 ### 开发工具
 - **Jira 集成**
@@ -72,7 +72,7 @@
    ```bash
    # 安装所有功能
    pip install devtoolbox[all]
-   
+
    # 安装特定功能
    pip install devtoolbox[llm]      # 仅 LLM 功能
    pip install devtoolbox[speech]   # 仅语音功能
@@ -85,41 +85,49 @@
    ```python
    from devtoolbox.llm import LLMService
    from devtoolbox.llm import OpenAIConfig
-   
+
    # 使用 OpenAI 初始化
    config = OpenAIConfig(api_key="your-api-key")
    service = LLMService(config)
-   
+
    # 生成文本
    response = service.generate("你好，你怎么样？")
    ```
 
-   **语音模块**
+      **语音模块**
    ```python
    from devtoolbox.speech import SpeechService
    from devtoolbox.speech import AzureConfig
-   
+
    # 使用 Azure 初始化
    config = AzureConfig(
        subscription_key="your-key",
        region="your-region"
    )
    service = SpeechService(config)
-   
+
    # 将文本转换为语音
    audio = service.text_to_speech("你好，世界！")
+
+   # 将语音转换为文本（同时生成转录文本和元数据）
+   service.speech_to_text(
+       "input.wav",
+       "output.txt",
+       output_format="txt"
+   )
+   # 同时会创建 output.txt.metadata.json 文件，包含详细的处理信息
    ```
 
    **Jira 集成**
    ```python
    from devtoolbox import JiraClient
-   
+
    client = JiraClient(
        server="your-jira-server",
        username="your-username",
        api_token="your-token"
    )
-   
+
    # 创建一个问题
    issue = client.create_issue(
        project="PROJ",
@@ -133,6 +141,20 @@
    - 请参见 `DEVELOPER.md` 以获取详细的配置选项
    - 使用 `.env` 文件进行本地开发
 
+4. **语音转文本元数据输出**
+
+   语音转文本功能现在会生成详细的元数据文件（.metadata.json），包含：
+
+   - **音频文件信息**：总时长、采样率、声道数、位深度等
+   - **处理统计**：音频分块数量、总文本长度、输出文件路径等
+   - **存储优化信息**：压缩比例、节省空间大小、格式转换详情等
+   - **分块详细信息**：每个音频块的时间戳、文本内容、文件大小等
+
+   这些元数据可用于：
+   - 音频处理质量分析
+   - 存储优化效果评估
+   - 进一步的数据处理和分析
+
 ### 开发指南
 
 1. **设置开发环境**
@@ -140,11 +162,11 @@
    # 克隆代码库
    git clone https://github.com/cloud2ai/devtoolbox.git
    cd devtoolbox
-   
+
    # 创建并激活虚拟环境
    python -m venv venv
    source venv/bin/activate  # 在 Windows 上: venv\Scripts\activate
-   
+
    # 安装开发依赖
    pip install -e ".[dev]"
    ```
@@ -173,7 +195,7 @@
    ```bash
    # 运行所有测试
    pytest
-   
+
    # 运行特定模块测试
    pytest tests/llm
    pytest tests/speech

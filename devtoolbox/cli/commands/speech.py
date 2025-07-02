@@ -24,25 +24,15 @@ PROVIDER_CONFIGS = {
 }
 
 
-# Common parameters
-def get_provider(
-    provider: str = typer.Option(
-        ...,
-        "-p", "--provider",
-        help=(
-            "Provider type (whisper: STT only, azure: TTS & STT, "
-            "volc: TTS only)"
-        ),
+# Common provider option
+PROVIDER_OPTION = typer.Option(
+    ...,
+    "-p", "--provider",
+    help=(
+        "Provider type (whisper: STT only, azure: TTS & STT, "
+        "volc: TTS only)"
     ),
-) -> str:
-    """
-    Get provider from command line
-    """
-    if provider.lower() not in PROVIDER_CONFIGS:
-        raise typer.BadParameter(
-            f"Provider must be one of: {', '.join(PROVIDER_CONFIGS.keys())}"
-        )
-    return provider.lower()
+)
 
 
 @app.callback()
@@ -78,7 +68,7 @@ def text_to_speech(
         file_okay=True,
         dir_okay=False,
     ),
-    provider: str = get_provider,
+    provider: str = PROVIDER_OPTION,
     speaker: str = typer.Option(
         None,
         "-s", "--speaker",
@@ -105,8 +95,14 @@ def text_to_speech(
     )
 
     try:
+        # Validate provider
+        if provider.lower() not in PROVIDER_CONFIGS:
+            raise typer.BadParameter(
+                f"Provider must be one of: {', '.join(PROVIDER_CONFIGS.keys())}"
+            )
+
         # Initialize service with provider config
-        config_class = PROVIDER_CONFIGS[provider]
+        config_class = PROVIDER_CONFIGS[provider.lower()]
         service = SpeechService(config_class())
 
         # Read text file
@@ -150,7 +146,7 @@ def speech_to_text(
         file_okay=True,
         dir_okay=False,
     ),
-    provider: str = get_provider,
+    provider: str = PROVIDER_OPTION,
     output_format: str = typer.Option(
         "txt",
         "-f", "--format",
@@ -187,8 +183,14 @@ def speech_to_text(
     )
 
     try:
+        # Validate provider
+        if provider.lower() not in PROVIDER_CONFIGS:
+            raise typer.BadParameter(
+                f"Provider must be one of: {', '.join(PROVIDER_CONFIGS.keys())}"
+            )
+
         # Initialize service with provider config
-        config_class = PROVIDER_CONFIGS[provider]
+        config_class = PROVIDER_CONFIGS[provider.lower()]
         service = SpeechService(config_class())
 
         # Convert speech to text
@@ -225,14 +227,23 @@ def setup_llm(
         False, "--debug", "-d", help="Enable debug logging"
     ),
 ):
-    """Pre-download Whisper models for offline use"""
+    """Pre-download Whisper models for offline use
+
+    Note: This command is deprecated. Use 'devtoolbox whisper download' instead.
+    """
     setup_logging(debug)
     logger = logging.getLogger(__name__)
 
     try:
+        logger.warning(
+            "This command is deprecated. Use 'devtoolbox whisper download' "
+            "instead for better Whisper model management."
+        )
+
+        # Use the existing whisper download functionality
+        import whisper
         logger.info(f"Pre-downloading Whisper {model_size} model...")
-        service = SpeechService(provider="whisper")
-        service._whisper_provider._load_model(model_size)
+        whisper.load_model(model_size)
         logger.info(f"Successfully downloaded Whisper {model_size} model")
     except Exception as e:
         logger.error(f"Failed to download Whisper model: {str(e)}")

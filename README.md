@@ -35,7 +35,7 @@ However, as I worked on more and more projects, I realized that I hadn't properl
   - VolcEngine Speech Services integration
   - Whisper integration
   - Text-to-Speech (TTS) capabilities
-  - Speech-to-Text (STT) capabilities
+  - Speech-to-Text (STT) capabilities with comprehensive metadata output
 
 ### Development Tools
 - **Jira Integration**
@@ -132,6 +132,14 @@ However, as I worked on more and more projects, I realized that I hadn't properl
 
    # Convert text to speech
    audio = service.text_to_speech("Hello, world!")
+
+   # Convert speech to text (generates both transcription and metadata)
+   service.speech_to_text(
+       "input.wav",
+       "output.txt",
+       output_format="txt"
+   )
+   # This also creates output.txt.metadata.json with detailed processing info
    ```
 
    **Jira Integration**
@@ -278,6 +286,13 @@ However, as I worked on more and more projects, I realized that I hadn't properl
      --format txt \
      --use-cache
 
+   # The speech-to-text command also generates a metadata file (.metadata.json)
+   # containing detailed information about the audio processing:
+   # - Audio file information (duration, sample rate, channels, etc.)
+   # - Processing statistics (total chunks, text length, etc.)
+   # - Storage optimization details (compression ratios, space saved)
+   # - Individual chunk metadata with timing and file information
+
    # Setup Whisper model
    devtoolbox speech setup-llm \
      --model-size base
@@ -335,6 +350,20 @@ However, as I worked on more and more projects, I realized that I hadn't properl
    - All modules support configuration through environment variables
    - See `DEVELOPER.md` for detailed configuration options
    - Use `.env` files for local development
+
+5. **Speech-to-Text Metadata Output**
+
+   The speech-to-text functionality now generates comprehensive metadata files (.metadata.json) containing:
+
+   - **Audio file information**: Total duration, sample rate, channels, bit depth, etc.
+   - **Processing statistics**: Number of audio chunks, total text length, output file paths, etc.
+   - **Storage optimization details**: Compression ratios, space saved, format conversion information, etc.
+   - **Chunk-level details**: Timestamps, text content, file sizes for each audio segment, etc.
+
+   This metadata can be used for:
+   - Audio processing quality analysis
+   - Storage optimization effectiveness evaluation
+   - Further data processing and analysis
 
 ### Development Guide
 
