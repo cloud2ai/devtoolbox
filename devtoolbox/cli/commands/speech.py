@@ -177,9 +177,8 @@ def speech_to_text(
     Convert speech to text
     """
     logger.debug(
-        "Converting speech to text: %s -> %s (provider=%s, format=%s, "
-        "use_cache=%s)",
-        audio_file, output_file, provider, output_format, use_cache
+        f"Converting speech to text: {audio_file} -> {output_file} "
+        f"(provider={provider}, format={output_format}, use_cache={use_cache})"
     )
 
     try:
@@ -194,7 +193,7 @@ def speech_to_text(
         service = SpeechService(config_class())
 
         # Convert speech to text
-        service.speech_to_text(
+        result = service.speech_to_text(
             str(audio_file),
             str(output_file),
             output_format=output_format,
@@ -204,11 +203,14 @@ def speech_to_text(
             keep_silence=keep_silence
         )
 
-        typer.echo(f"Successfully converted speech to text: {output_file}")
+        typer.echo(f"Successfully converted speech to text: {result['output_path']}")
+        typer.echo(f"Metadata file: {result['metadata_path']}")
+        typer.echo(f"Chunks directory: {result['chunks_path']}")
     except Exception as e:
         logger.error(
-            "Failed to convert speech to text: %s",
-            str(e),
+            f"Failed to convert speech to text: input={audio_file}, "
+            f"output={output_file}, provider={provider}, format={output_format}, "
+            f"error={str(e)}",
             exc_info=True
         )
         typer.echo(f"Failed to convert speech to text: {str(e)}")

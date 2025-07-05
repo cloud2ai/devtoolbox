@@ -710,7 +710,7 @@ class SpeechService:
         silence_thresh: int = DEFAULT_SILENCE_THRESH,
         keep_silence: int = DEFAULT_KEEP_SILENCE,
         cleanup_cache: bool = False
-    ) -> str:
+    ) -> Dict[str, str]:
         """Convert speech to text with caching.
 
         Args:
@@ -724,40 +724,39 @@ class SpeechService:
             cleanup_cache: Whether to clean up cache after processing
 
         Returns:
-            str: Path to the transcription file
+            Dict[str, str]: Dictionary with output, metadata, and chunks paths
 
         Raises:
             Exception: If speech-to-text fails
         """
-        logger.info("Starting speech-to-text conversion")
-        logger.debug("Input audio file: %s", speech_path)
-        logger.debug("Output file: %s, Format: %s", output_path, output_format)
-        logger.debug("Use cache: %s, Cleanup cache: %s",
-                    use_cache, cleanup_cache)
+        # Log the start of the speech-to-text process
+        logger.info(
+            f"Starting speech-to-text conversion: input={speech_path}, "
+            f"output={output_path}, format={output_format}, "
+            f"use_cache={use_cache}, cleanup_cache={cleanup_cache}"
+        )
+        logger.debug(f"Input audio file: {speech_path}")
+        logger.debug(
+            f"Output file: {output_path}, Format: {output_format}"
+        )
+        logger.debug(
+            f"Use cache: {use_cache}, Cleanup cache: {cleanup_cache}"
+        )
 
-        # Audio loading phase:
-        # - Load audio file using pydub AudioSegment
-        # - Supports various audio formats (mp3, wav, etc.)
-        # - Log audio duration for processing information
-        # - Audio object contains all necessary metadata
-        logger.debug("Loading audio file")
+        # Load audio file
+        logger.debug(f"Loading audio file: {speech_path}")
         audio = AudioSegment.from_file(speech_path)
-        logger.info("Audio loaded, duration: %d ms", len(audio))
+        logger.info(
+            f"Audio loaded: {speech_path}, duration: {len(audio)} ms"
+        )
 
-        # Directory setup phase:
-        # - Create cache directory based on input filename
-        # - Use same directory for temporary processing files
-        # - Directory structure: <input_filename>.chunk/
-        # - Enables organized file management and caching
+        # Prepare cache and temp directories
         cache_dir = self._setup_cache_dir(speech_path)
         temp_dir = self._setup_temp_dir(speech_path)
+        metadata_path = f"{output_path}.metadata.json"
 
         try:
-            # Audio processing phase:
-            # - Split audio into chunks based on silence detection
-            # - Transcribe each chunk individually
-            # - Apply caching strategy for performance optimization
-            # - Return both transcribed texts and audio chunks
+            # Split audio into chunks and transcribe each chunk
             texts, chunks, file_metadata = self._process_audio_chunks(
                 audio,
                 temp_dir,
@@ -768,49 +767,60 @@ class SpeechService:
                 use_cache
             )
 
-            # Content generation phase:
-            # - Generate final content in requested format
-            # - Support multiple output formats (txt, srt, ass, vtt)
-            # - Format content according to subtitle standards
-            # - Log content length for verification
-            logger.info("Generating final content in %s format", output_format)
-            final_text = self._generate_content(texts, chunks, output_format)
-            logger.debug("Final content length: %d characters",
-                        len(final_text))
+            # Generate final content in the requested format
+            logger.info(
+                f"Generating final content: output={output_path}, "
+                f"format={output_format}, total_chunks={len(chunks)}"
+            )
+            final_text = self._generate_content(
+                texts, chunks, output_format
+            )
+            logger.debug(
+                f"Final content length: {len(final_text)} characters, "
+                f"output file: {output_path}"
+            )
 
-            # File output phase:
-            # - Save transcribed content to output file
-            # - Use UTF-8 encoding for international character support
-            # - Log successful file creation
+            # Save transcription to output file
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(final_text)
-            logger.info("Transcription successfully saved at: %s", output_path)
+            logger.info(
+                f"Transcription successfully saved: {output_path} "
+                f"(length: {len(final_text)} characters)"
+            )
 
-            # Metadata generation phase:
-            # - Create comprehensive metadata for processed audio
-            # - Include timing information for each chunk
-            # - Save metadata as JSON for easy programmatic access
-            # - Enable further processing and analysis
-            logger.info("Generating metadata file")
-            metadata = self._generate_metadata(texts, chunks, file_metadata, audio,
-                                             output_path)
-            metadata_path = f"{output_path}.metadata.json"
+            # Generate and save metadata as JSON
+            logger.info(
+                f"Generating metadata file: {metadata_path}, "
+                f"total_chunks={len(chunks)}"
+            )
+            metadata = self._generate_metadata(
+                texts, chunks, file_metadata, audio, output_path
+            )
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
-            logger.info("Metadata successfully saved at: %s", metadata_path)
+            logger.info(
+                f"Metadata successfully saved: {metadata_path} "
+                f"(size: {os.path.getsize(metadata_path)} bytes)"
+            )
 
-            return output_path
+            # Return all relevant paths for further processing
+            return {
+                "output_path": output_path,
+                "metadata_path": metadata_path,
+                "chunks_path": cache_dir
+            }
         except Exception as e:
-            logger.error("Error in speech-to-text processing: %s", str(e))
+            logger.error(
+                f"Error in speech-to-text processing: input={speech_path}, "
+                f"output={output_path}, format={output_format}, error={str(e)}"
+            )
             raise
         finally:
-            # Cleanup phase:
-            # - Optionally remove cache directory after processing
-            # - Ensures temporary files are cleaned up if requested
-            # - Always executed regardless of success or failure
-            # - Prevents accumulation of temporary files
+            # Optionally clean up cache directory
             if cleanup_cache:
-                logger.info("Cleaning up cache directory")
+                logger.info(
+                    f"Cleaning up cache directory: {cache_dir}"
+                )
                 self._cleanup_cache_dir(cache_dir)
 
     def list_speakers(self) -> List[str]:
