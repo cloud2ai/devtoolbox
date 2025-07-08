@@ -97,7 +97,11 @@ speech = [
 
     # Azure Speech Services
     # Used in: devtoolbox/speech/azure_provider.py
-    "azure-cognitiveservices-speech>=1.32.0"
+    "azure-cognitiveservices-speech>=1.32.0",
+
+    # Subtitle processing
+    # Used in: devtoolbox/speech/* (subtitle utilities)
+    "pysubs2>=1.5.0"
 ]
 
 # Image processing related dependencies
