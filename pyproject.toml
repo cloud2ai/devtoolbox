@@ -91,10 +91,6 @@ speech = [
     # Used in: devtoolbox/speech/* (speech providers)
     "pydub>=0.25.1",
 
-    # OpenAI Whisper for speech recognition
-    # Used in: devtoolbox/speech/whisper_provider.py
-    "openai-whisper>=20231117",
-
     # Azure Speech Services
     # Used in: devtoolbox/speech/azure_provider.py
     "azure-cognitiveservices-speech>=1.32.0",
@@ -102,6 +98,13 @@ speech = [
     # Subtitle processing
     # Used in: devtoolbox/speech/* (subtitle utilities)
     "pysubs2>=1.5.0"
+]
+
+# Speech-Whisper related dependencies
+speech-whisper = [
+    # OpenAI Whisper for speech recognition
+    # Used in: devtoolbox/speech/whisper_provider.py
+    "openai-whisper>=20231117",
 ]
 
 # Image processing related dependencies
@@ -151,10 +154,6 @@ llm = [
     # OpenAI tokenizer
     # Used in: devtoolbox/llm/* (token counting utilities)
     "tiktoken>=0.5.2",
-
-    # Hugging Face Transformers
-    # Used in: devtoolbox/llm/* (model loading and inference)
-    "transformers>=4.36.2",
 
     # NLP processing
     # Used in: devtoolbox/text_splitter/* (text processing utilities)

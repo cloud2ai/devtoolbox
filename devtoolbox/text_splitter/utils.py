@@ -5,7 +5,6 @@ import langid
 import spacy
 from collections import Counter
 import tiktoken
-from transformers import AutoTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +64,9 @@ CHINESE_IGNORED_POS = {
     'm',  # Numeral
     'q',  # Classifier
 }
+
+# Default tokenizer model
+DEFAULT_TOKENIZER_MODEL = "gpt2"
 
 # Global variable to store loaded spaCy models
 _nlp_models = {}
@@ -460,7 +462,11 @@ def get_tokenizer(model_name: str):
     if model_name.startswith("gpt"):
         return tiktoken.encoding_for_model(model_name)
     else:
-        return AutoTokenizer.from_pretrained(model_name)
+        # NOTE(Ray): We avoid using transformers for token counting of other
+        # models because it introduces too many dependencies and the package
+        # size is too large for lightweight or dependency-sensitive
+        # environments.
+        return tiktoken.encoding_for_model(DEFAULT_TOKENIZER_MODEL)
 
 
 def count_tokens(text: str, model_name: str = "gpt-4o-mini") -> int:
