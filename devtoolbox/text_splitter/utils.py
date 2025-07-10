@@ -1,10 +1,10 @@
+from __future__ import annotations
 import re
 import logging
 from typing import Tuple, List
 import langid
-import spacy
-from collections import Counter
 import tiktoken
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +68,14 @@ CHINESE_IGNORED_POS = {
 # Default tokenizer model
 DEFAULT_TOKENIZER_MODEL = "gpt2"
 
-# Global variable to store loaded spaCy models
+# Global variable to store loaded spaCy models for different languages
 _nlp_models = {}
 
 
 def get_word_pos_pairs(
     text: str,
     nlp: spacy.Language
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Get word and part-of-speech pairs from text using spaCy.
 
     Args:
@@ -89,15 +89,33 @@ def get_word_pos_pairs(
     return [(token.text, token.pos_) for token in doc]
 
 
-def load_spacy_model(language: str) -> spacy.Language:
-    """Load spaCy model for the specified language.
+def load_spacy_model(language: str):
+    """
+    Load spaCy model for the specified language with lazy and precise loading.
+
+    This function implements lazy loading and caching for spaCy models.
+    It loads the model only when not already cached, and disables
+    unnecessary pipeline components to improve performance.
+
+    Loaded components:
+        - tokenizer: Splits text into tokens
+        - tagger: Provides part-of-speech tags (token.pos_)
+
+    Disabled components:
+        - ner: Named Entity Recognition
+        - parser: Dependency parsing
+        - lemmatizer: Lemmatization
+
+    To enable more spaCy features, remove the corresponding component
+    from the 'disable' list. For example, to use NER, remove 'ner'.
 
     Args:
         language: Language code (e.g., 'zh', 'en')
 
     Returns:
-        Loaded spaCy language model
+        spaCy language model (tokenizer + tagger)
     """
+    global _nlp_models
     try:
         # Map language codes to spaCy model names
         model_map = {
@@ -106,16 +124,30 @@ def load_spacy_model(language: str) -> spacy.Language:
             'ja': 'ja_core_news_sm',
             'ko': 'ko_core_news_sm'
         }
-
         model_name = model_map.get(language, 'en_core_web_sm')
-        logger.debug(f"Loading spaCy model: {model_name}")
-        return spacy.load(model_name)
+        # Only load the model if it is not already cached
+        if model_name not in _nlp_models:
+            import spacy
+            # Disable unnecessary components, keep tagger for POS
+            _nlp_models[model_name] = spacy.load(
+                model_name,
+                disable=["ner", "parser", "lemmatizer"]
+            )
+        # Return the cached model
+        return _nlp_models[model_name]
     except OSError:
         logger.warning(
             f"Model for language {language} not available. "
             "Falling back to English model."
         )
-        return spacy.load("en_core_web_sm")
+        import spacy
+        # Fallback to English model if the requested model is not available
+        if "en_core_web_sm" not in _nlp_models:
+            _nlp_models["en_core_web_sm"] = spacy.load(
+                "en_core_web_sm",
+                disable=["ner", "parser", "lemmatizer"]
+            )
+        return _nlp_models["en_core_web_sm"]
 
 
 def extract_keywords(

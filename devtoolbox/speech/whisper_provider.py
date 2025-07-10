@@ -16,7 +16,6 @@ import logging
 import os
 from typing import Optional, List, Any
 from dataclasses import dataclass, field
-import whisper
 
 from .provider import (
     BaseSpeechProvider,
@@ -210,6 +209,7 @@ class WhisperProvider(BaseSpeechProvider):
             The loaded Whisper model
         """
         if self._model is None:
+            import whisper  # Lazy import to speed up CLI startup
             self._model = whisper.load_model(self.config.model_name)
         return self._model
 

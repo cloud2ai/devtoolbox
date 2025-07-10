@@ -1,6 +1,5 @@
 import typer
 import logging
-import whisper
 from devtoolbox.cli.utils import setup_logging
 
 app = typer.Typer(help="Whisper model management commands")
@@ -22,6 +21,7 @@ def download(
     logger = logging.getLogger(__name__)
 
     try:
+        import whisper  # Lazy import to speed up CLI startup
         logger.info(f"Downloading Whisper {model_size} model...")
         whisper.load_model(model_size)
         logger.info(f"Successfully downloaded Whisper {model_size} model")

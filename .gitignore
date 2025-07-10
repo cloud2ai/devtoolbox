@@ -184,3 +184,5 @@ examples/test_storage/*.mp3
 *.json
 *.chunk
 test_speech
+
+*.html

@@ -1,7 +1,7 @@
+from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from .base import BaseSplitter, Paragraph
 from .utils import (
@@ -89,6 +89,8 @@ class TokenSplitter(BaseSplitter):
         """
         separators = SEPARATORS.get(language, SEPARATORS['default'])
         logger.debug(f"Creating splitter for language: {language}")
+        # Lazy import to speed up CLI startup
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
         return RecursiveCharacterTextSplitter(
             separators=separators,
             chunk_size=self.chunk_size,
@@ -104,20 +106,20 @@ class TokenSplitter(BaseSplitter):
             List[Paragraph]: List of Paragraph objects
         """
         logger.info("Starting text splitting process")
-        
+
         # Create appropriate splitter based on language
         splitter = self._create_splitter(self.language)
-        
+
         # Split text into chunks
         chunks = splitter.split_text(self.text)
         logger.info(f"Split text into {len(chunks)} chunks")
-        
+
         # Create Paragraph objects
         paragraphs = []
         for i, chunk in enumerate(chunks):
             # Split chunk into sentences
             sentences = split_sentences(chunk, language=self.language)
-            
+
             # Create paragraph
             paragraph = self.paragraph_class(
                 text=chunk,
@@ -126,7 +128,6 @@ class TokenSplitter(BaseSplitter):
                 length=count_tokens(chunk, self.model_name)
             )
             paragraphs.append(paragraph)
-            
+
         logger.info(f"Created {len(paragraphs)} paragraphs")
         return paragraphs
-
