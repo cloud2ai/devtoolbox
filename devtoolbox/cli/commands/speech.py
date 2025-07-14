@@ -157,20 +157,25 @@ def speech_to_text(
         "--use-cache/--no-cache",
         help="Whether to use cache",
     ),
-    min_silence_len: int = typer.Option(
-        1000,
-        "--min-silence",
-        help="Minimum silence length in milliseconds",
+    min_chunk_duration: int = typer.Option(
+        300000,
+        "--min-chunk-duration",
+        help="Minimum chunk duration in milliseconds (default: 300000, 5min)",
     ),
-    silence_thresh: int = typer.Option(
-        -40,
-        "--silence-thresh",
-        help="Silence threshold in dB",
+    max_chunk_duration: int = typer.Option(
+        600000,
+        "--max-chunk-duration",
+        help="Maximum chunk duration in milliseconds (default: 600000, 10min)",
     ),
-    keep_silence: int = typer.Option(
-        500,
-        "--keep-silence",
-        help="Silence to keep in milliseconds",
+    vad_aggressiveness: int = typer.Option(
+        2,
+        "--vad-aggressiveness",
+        help="VAD aggressiveness (0-3, default: 2)",
+    ),
+    max_wait_for_silence: int = typer.Option(
+        120000,
+        "--max-wait-for-silence",
+        help="Max wait for silence after max chunk duration (ms, default: 120000)",
     ),
 ):
     """
@@ -178,7 +183,9 @@ def speech_to_text(
     """
     logger.debug(
         f"Converting speech to text: {audio_file} -> {output_file} "
-        f"(provider={provider}, format={output_format}, use_cache={use_cache})"
+        f"(provider={provider}, format={output_format}, use_cache={use_cache}, "
+        f"min_chunk_duration={min_chunk_duration}, max_chunk_duration={max_chunk_duration}, "
+        f"vad_aggressiveness={vad_aggressiveness}, max_wait_for_silence={max_wait_for_silence})"
     )
 
     try:
@@ -198,9 +205,10 @@ def speech_to_text(
             str(output_file),
             output_format=output_format,
             use_cache=use_cache,
-            min_silence_len=min_silence_len,
-            silence_thresh=silence_thresh,
-            keep_silence=keep_silence
+            min_chunk_duration=min_chunk_duration,
+            max_chunk_duration=max_chunk_duration,
+            vad_aggressiveness=vad_aggressiveness,
+            max_wait_for_silence=max_wait_for_silence
         )
 
         typer.echo(f"Successfully converted speech to text: {result['output_path']}")

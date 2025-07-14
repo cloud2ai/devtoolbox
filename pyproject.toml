@@ -97,7 +97,19 @@ speech = [
 
     # Subtitle processing
     # Used in: devtoolbox/speech/* (subtitle utilities)
-    "pysubs2>=1.5.0"
+    "pysubs2>=1.5.0",
+
+    # VAD (Voice Activity Detection)
+    # Used in: devtoolbox/speech/utils.py
+    "webrtcvad>=2.0.10",
+
+    # ffmpeg Python binding
+    # Used in: devtoolbox/speech/utils.py
+    "ffmpeg-python>=0.2.0",
+
+    # Azure Blob Storage
+    # Used in: devtoolbox/speech/clients/azure_client.py
+    "azure-storage-blob>=12.19.0"
 ]
 
 # Speech-Whisper related dependencies

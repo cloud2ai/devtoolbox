@@ -12,13 +12,24 @@ import logging
 import shutil
 import json
 from typing import List, Optional, Tuple, Dict, Any
+from dataclasses import asdict
 
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 import pysubs2
+import wave
+import webrtcvad
 
 from devtoolbox.text_splitter.token_splitter import TokenSplitter
 from devtoolbox.speech.provider import BaseSpeechConfig
+from devtoolbox.speech.utils import (
+    split_speech_chunks,
+    convert_audio_ffmpeg,
+    DEFAULT_MIN_CHUNK_DURATION,
+    DEFAULT_MAX_CHUNK_DURATION,
+    DEFAULT_VAD_AGGRESSIVENESS,
+    DEFAULT_MAX_WAIT_FOR_SILENCE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -434,243 +445,90 @@ class SpeechService:
 
     def _process_audio_chunks(
         self,
-        audio: AudioSegment,
+        speech_path: str,
         temp_dir: str,
         cache_dir: str,
-        min_silence_len: int,
-        silence_thresh: int,
-        keep_silence: int,
-        use_cache: bool = True
-    ) -> Tuple[List[str], List[AudioSegment], List[Dict[str, Any]]]:
-        """Process audio chunks and transcribe them.
-
-        Args:
-            audio: Audio segment to process
-            temp_dir: Temporary directory for processing
-            cache_dir: Cache directory for storing results
-            min_silence_len: Minimum silence length for splitting
-            silence_thresh: Silence threshold for splitting
-            keep_silence: Amount of silence to keep
-            use_cache: Whether to use cache for chunks
-
-        Returns:
-            Tuple[List[str], List[AudioSegment], List[Dict[str, Any]]]:
-            List of transcribed texts, audio chunks, and file metadata
-        """
-        logger.debug("Processing audio chunks")
-        logger.debug("Audio duration: %d ms", len(audio))
-        logger.debug("Silence settings: min_len=%dms, thresh=%ddB, keep=%dms",
-                    min_silence_len, silence_thresh, keep_silence)
-
-        # Audio segmentation strategy:
-        # - Split audio on silence to create natural speech segments
-        # - min_silence_len: Minimum duration of silence to trigger split
-        # - silence_thresh: Volume threshold below which is considered silence
-        # - keep_silence: Amount of silence to preserve around speech
-        # - This creates chunks that correspond to natural speech pauses
-        chunks = split_on_silence(
-            audio,
-            min_silence_len=min_silence_len,
-            silence_thresh=silence_thresh,
-            keep_silence=keep_silence
+        use_cache: bool = True,
+        min_chunk_duration: int = DEFAULT_MIN_CHUNK_DURATION,
+        max_chunk_duration: int = DEFAULT_MAX_CHUNK_DURATION,
+        vad_aggressiveness: int = DEFAULT_VAD_AGGRESSIVENESS,
+        max_wait_for_silence: int = DEFAULT_MAX_WAIT_FOR_SILENCE
+    ) -> list:
+        # Use split_speech_chunks to get List[ChunkMeta]
+        from devtoolbox.speech.utils import ChunkMeta
+        chunk_metas: list = split_speech_chunks(
+            speech_path,
+            temp_dir,
+            min_chunk_duration,
+            max_chunk_duration,
+            vad_aggressiveness,
+            max_wait_for_silence
         )
-        logger.info("Audio split into %d chunks", len(chunks))
-
-        # Chunk processing loop:
-        # - Process each audio chunk individually for transcription
-        # - Generate cache key based on audio data hash
-        # - Check cache first, then transcribe if needed
-        # - Cache transcription results for future reuse
-        # - Always save both WAV and MP3 files for flexibility
-        texts = []
-        file_metadata = []
-
-        for i, chunk in enumerate(chunks):
-            logger.debug("Processing chunk %d/%d (duration: %d ms)",
-                        i + 1, len(chunks), len(chunk))
-
-            # Cache key generation:
-            # - Use MD5 hash of raw audio data as cache key
-            # - Ensures identical audio chunks use same cache
-            # - Cache file contains transcribed text only
-            chunk_hash = hashlib.md5(chunk.raw_data).hexdigest()
+        logger.info(f"Audio split into {len(chunk_metas)} chunks")
+        for chunk in chunk_metas:
+            # Transcode wav to mp3
+            mp3_path = os.path.splitext(chunk.wav_path)[0] + '.mp3'
+            convert_audio_ffmpeg(
+                chunk.wav_path,
+                mp3_path,
+                sample_rate=16000,
+                channels=1,
+                sample_fmt='s16'
+            )
+            chunk.mp3_path = mp3_path
+            chunk.wav_size = self._get_file_size(chunk.wav_path)
+            chunk.mp3_size = self._get_file_size(mp3_path)
+            # Caching and transcription logic
+            with open(chunk.wav_path, 'rb') as f:
+                chunk_data = f.read()
+            chunk_hash = hashlib.md5(chunk_data).hexdigest()
             cache_path = self._get_cache_path(cache_dir, chunk_hash, "txt")
 
-            # Cache lookup:
-            # - Check if transcription exists in cache
-            # - Load cached transcription if available
-            # - Skip transcription step if cached
             if use_cache and os.path.exists(cache_path):
-                logger.debug("Using cached transcription for chunk %d", i)
                 with open(cache_path, "r") as f:
-                    texts.append(f.read().strip())
-
-                # Prepare file metadata for cached chunks
-                wav_path = os.path.join(temp_dir, f"chunk_{i}.{self.PROCESSING_FORMAT}")
-                mp3_path = os.path.join(temp_dir, f"chunk_{i}.{self.STORAGE_FORMAT}")
-
-                chunk_metadata = {
-                    "index": i,
-                    "wav_file": f"chunk_{i}.{self.PROCESSING_FORMAT}",
-                    "mp3_file": f"chunk_{i}.{self.STORAGE_FORMAT}",
-                    "wav_size": self._get_file_size(wav_path),
-                    "mp3_size": self._get_file_size(mp3_path),
-                    "cached": True
-                }
-                file_metadata.append(chunk_metadata)
+                    chunk.transcript = f.read().strip()
+                chunk.cached = True
                 continue
 
-            # Audio chunk preparation:
-            # - Export chunk to WAV format for transcription
-            # - WAV format ensures compatibility with STT providers
-            # - Temporary files used for processing
-            wav_path = os.path.join(temp_dir, f"chunk_{i}.{self.PROCESSING_FORMAT}")
-            mp3_path = os.path.join(temp_dir, f"chunk_{i}.{self.STORAGE_FORMAT}")
-            temp_output = os.path.join(temp_dir, f"chunk_{i}.txt")
-
-            try:
-                # Transcription process:
-                # - Export audio chunk to WAV format
-                # - Call STT provider to transcribe audio
-                # - Read transcription result from output file
-                # - Cache result for future use if enabled
-                logger.debug("Exporting chunk %d to WAV", i)
-                chunk.export(wav_path, format=self.PROCESSING_FORMAT)
-                logger.info("Transcribing chunk %d", i)
-                self.provider.transcribe(wav_path, temp_output)
-
-                # Result processing:
-                # - Read transcription from temporary file
-                # - Strip whitespace and add to results list
-                # - Log preview of transcription for debugging
-                # - Save to cache if caching enabled
-                with open(temp_output, "r") as f:
-                    text = f.read().strip()
-                    texts.append(text)
-                    text_preview = (text[:100] + "..."
-                                  if len(text) > 100 else text)
-                    logger.debug("Chunk %d transcription: %s", i, text_preview)
-
-                # Format conversion for storage:
-                # - Always convert WAV to MP3 for storage optimization
-                # - Calculate file sizes and compression ratio
-                # - Prepare file metadata for both formats
-                logger.debug("Converting chunk %d to MP3 for storage", i)
-                conversion_info = self._convert_audio_format(
-                    wav_path, mp3_path,
-                    self.PROCESSING_FORMAT, self.STORAGE_FORMAT
-                )
-
-                # Prepare file metadata
-                chunk_metadata = {
-                    "index": i,
-                    "wav_file": f"chunk_{i}.{self.PROCESSING_FORMAT}",
-                    "mp3_file": f"chunk_{i}.{self.STORAGE_FORMAT}",
-                    "wav_size": self._get_file_size(wav_path),
-                    "mp3_size": self._get_file_size(mp3_path),
-                    "conversion_info": conversion_info,
-                    "cached": False
-                }
-                file_metadata.append(chunk_metadata)
-
-                # Cache management:
-                # - Save transcription to cache file
-                # - Cache key ensures identical chunks use same cache
-                # - Enables reuse of transcription results
-                if use_cache:
-                    with open(cache_path, "w") as f:
-                        f.write(text)
-                    logger.debug("Cached transcription for chunk %d", i)
-
-            except Exception as e:
-                logger.error("Error processing chunk %d: %s", i, str(e))
-                raise
-
-        logger.info("Successfully processed %d chunks", len(chunks))
-        return texts, chunks, file_metadata
+            temp_output = os.path.join(temp_dir, f"chunk_{chunk.index}.txt")
+            self.provider.transcribe(chunk.wav_path, temp_output)
+            with open(temp_output, "r") as f:
+                chunk.transcript = f.read().strip()
+            chunk.cached = False
+            if use_cache:
+                with open(cache_path, "w") as f:
+                    f.write(chunk.transcript)
+        return chunk_metas
 
     def _generate_metadata(
         self,
-        texts: List[str],
-        chunks: List[AudioSegment],
-        file_metadata: List[Dict[str, Any]],
-        audio: AudioSegment,
+        chunk_metas: list,
+        audio: 'AudioSegment',
         output_path: str
-    ) -> Dict[str, Any]:
-        """Generate metadata for audio chunks.
-
-        Args:
-            texts: List of transcribed texts
-            chunks: List of audio chunks
-            file_metadata: List of file metadata for each chunk
-            audio: Original audio segment
-            output_path: Path to output file
-
-        Returns:
-            Dict[str, Any]: Metadata dictionary
-        """
-        logger.debug("Generating metadata for %d chunks", len(chunks))
-
-        # Timing calculation strategy:
-        # - Calculate start and end times for each chunk
-        # - Track cumulative time as we process chunks
-        # - Convert milliseconds to seconds for readability
-        # - Maintain precise timing information for each segment
-        chunk_metadata = []
-        current_time = 0
-
-        for i, (text, chunk, file_info) in enumerate(zip(texts, chunks, file_metadata)):
-            chunk_duration = len(chunk)
-
-            # Chunk metadata structure:
-            # - index: Sequential chunk number
-            # - start_time: Absolute start time in original audio (seconds)
-            # - end_time: Absolute end time in original audio (seconds)
-            # - duration: Length of this specific chunk (seconds)
-            # - text: Transcribed text content
-            # - text_length: Character count of transcription
-            # - wav_file: WAV file name for processing
-            # - mp3_file: MP3 file name for storage
-            # - file_sizes: Size information for both formats
-            # - conversion_info: Format conversion details
-            chunk_info = {
-                "index": i,
-                "start_time": current_time / 1000.0,
-                "end_time": (current_time + chunk_duration) / 1000.0,
-                "duration": chunk_duration / 1000.0,
-                "text": text,
-                "text_length": len(text),
-                "wav_file": file_info["wav_file"],
-                "mp3_file": file_info["mp3_file"],
-                "wav_size": file_info["wav_size"],
-                "mp3_size": file_info["mp3_size"],
-                "compression_ratio": (file_info["mp3_size"] / file_info["wav_size"]
-                                    if file_info["wav_size"] > 0 else 0),
-                "conversion_info": file_info.get("conversion_info")
-            }
-            chunk_metadata.append(chunk_info)
-            current_time += chunk_duration
-
-        # Calculate total storage statistics
-        total_wav_size = sum(info["wav_size"] for info in file_metadata)
-        total_mp3_size = sum(info["mp3_size"] for info in file_metadata)
+    ) -> dict:
+        logger.debug("Generating metadata for %d chunks", len(chunk_metas))
+        total_wav_size = sum(chunk.wav_size or 0 for chunk in chunk_metas)
+        total_mp3_size = sum(chunk.mp3_size or 0 for chunk in chunk_metas)
         overall_compression_ratio = (total_mp3_size / total_wav_size
                                    if total_wav_size > 0 else 0)
-
-        # Metadata structure design:
-        # - audio_info: Technical details about original audio file
-        # - processing_info: Summary statistics and file paths
-        # - storage_info: Storage format and compression statistics
-        # - chunks: Detailed information about each processed segment
-        # - Enables comprehensive analysis and further processing
-        metadata = {
-            "audio_info": {
+        if audio is not None:
+            audio_info = {
                 "total_duration": len(audio) / 1000.0,
                 "sample_rate": audio.frame_rate,
                 "channels": audio.channels,
                 "bit_depth": audio.sample_width * 8,
                 "original_format": "wav"
-            },
+            }
+        else:
+            audio_info = {
+                "total_duration": None,
+                "sample_rate": None,
+                "channels": None,
+                "bit_depth": None,
+                "original_format": "wav"
+            }
+        metadata = {
+            "audio_info": audio_info,
             "storage_info": {
                 "processing_format": self.PROCESSING_FORMAT,
                 "storage_format": self.STORAGE_FORMAT,
@@ -682,58 +540,41 @@ class SpeechService:
                 "space_saved_percent": (1 - overall_compression_ratio) * 100
             },
             "processing_info": {
-                "total_chunks": len(chunks),
-                "total_text_length": sum(len(text) for text in texts),
+                "total_chunks": len(chunk_metas),
+                "total_text_length": sum(len(chunk.transcript or "") for chunk in chunk_metas),
                 "output_file": output_path,
                 "metadata_file": f"{output_path}.metadata.json",
-
             },
-            "chunks": chunk_metadata
+            "chunks": [asdict(chunk) for chunk in chunk_metas]
         }
-
         logger.debug("Metadata generated with %d chunk entries",
-                    len(chunk_metadata))
+                    len(chunk_metas))
         logger.info("Storage optimization: %.1f%% space saved (%.1f MB -> %.1f MB)",
                    metadata["storage_info"]["space_saved_percent"],
                    total_wav_size / (1024 * 1024),
                    total_mp3_size / (1024 * 1024))
-
         return metadata
 
     def speech_to_text(
         self,
         speech_path: str,
         output_path: str,
-        output_format: str = DEFAULT_OUTPUT_FORMAT,
+        output_format: str = "txt",
         use_cache: bool = True,
-        min_silence_len: int = DEFAULT_SILENCE_LEN,
-        silence_thresh: int = DEFAULT_SILENCE_THRESH,
-        keep_silence: int = DEFAULT_KEEP_SILENCE,
-        cleanup_cache: bool = False
-    ) -> Dict[str, str]:
-        """Convert speech to text with caching.
-
-        Args:
-            speech_path: Path to the audio file
-            output_path: Path to save the transcription
-            output_format: Output format (txt, srt, ass, vtt)
-            use_cache: Whether to use cache
-            min_silence_len: Minimum silence length for splitting
-            silence_thresh: Silence threshold for splitting
-            keep_silence: Amount of silence to keep
-            cleanup_cache: Whether to clean up cache after processing
-
-        Returns:
-            Dict[str, str]: Dictionary with output, metadata, and chunks paths
-
-        Raises:
-            Exception: If speech-to-text fails
-        """
-        # Log the start of the speech-to-text process
+        cleanup_cache: bool = False,
+        min_chunk_duration: int = DEFAULT_MIN_CHUNK_DURATION,
+        max_chunk_duration: int = DEFAULT_MAX_CHUNK_DURATION,
+        vad_aggressiveness: int = DEFAULT_VAD_AGGRESSIVENESS,
+        max_wait_for_silence: int = DEFAULT_MAX_WAIT_FOR_SILENCE
+    ) -> dict:
         logger.info(
             f"Starting speech-to-text conversion: input={speech_path}, "
             f"output={output_path}, format={output_format}, "
-            f"use_cache={use_cache}, cleanup_cache={cleanup_cache}"
+            f"use_cache={use_cache}, cleanup_cache={cleanup_cache}, "
+            f"min_chunk_duration={min_chunk_duration}, "
+            f"max_chunk_duration={max_chunk_duration}, "
+            f"vad_aggressiveness={vad_aggressiveness}, "
+            f"max_wait_for_silence={max_wait_for_silence}"
         )
         logger.debug(f"Input audio file: {speech_path}")
         logger.debug(
@@ -742,59 +583,38 @@ class SpeechService:
         logger.debug(
             f"Use cache: {use_cache}, Cleanup cache: {cleanup_cache}"
         )
-
-        # Load audio file
-        logger.debug(f"Loading audio file: {speech_path}")
-        audio = AudioSegment.from_file(speech_path)
-        logger.info(
-            f"Audio loaded: {speech_path}, duration: {len(audio)} ms"
-        )
-
-        # Prepare cache and temp directories
         cache_dir = self._setup_cache_dir(speech_path)
         temp_dir = self._setup_temp_dir(speech_path)
         metadata_path = f"{output_path}.metadata.json"
-
         try:
-            # Split audio into chunks and transcribe each chunk
-            texts, chunks, file_metadata = self._process_audio_chunks(
-                audio,
+            chunk_metas = self._process_audio_chunks(
+                speech_path,
                 temp_dir,
                 cache_dir,
-                min_silence_len,
-                silence_thresh,
-                keep_silence,
-                use_cache
+                use_cache,
+                min_chunk_duration,
+                max_chunk_duration,
+                vad_aggressiveness,
+                max_wait_for_silence
             )
-
-            # Generate final content in the requested format
             logger.info(
                 f"Generating final content: output={output_path}, "
-                f"format={output_format}, total_chunks={len(chunks)}"
+                f"format={output_format}, total_chunks={len(chunk_metas)}"
             )
-            final_text = self._generate_content(
-                texts, chunks, output_format
-            )
+            # Compose final text from all transcripts
+            final_text = "\n".join(chunk.transcript or "" for chunk in chunk_metas)
             logger.debug(
                 f"Final content length: {len(final_text)} characters, "
                 f"output file: {output_path}"
             )
-
-            # Save transcription to output file
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(final_text)
             logger.info(
                 f"Transcription successfully saved: {output_path} "
                 f"(length: {len(final_text)} characters)"
             )
-
-            # Generate and save metadata as JSON
-            logger.info(
-                f"Generating metadata file: {metadata_path}, "
-                f"total_chunks={len(chunks)}"
-            )
             metadata = self._generate_metadata(
-                texts, chunks, file_metadata, audio, output_path
+                chunk_metas, None, output_path
             )
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -802,8 +622,6 @@ class SpeechService:
                 f"Metadata successfully saved: {metadata_path} "
                 f"(size: {os.path.getsize(metadata_path)} bytes)"
             )
-
-            # Return all relevant paths for further processing
             return {
                 "output_path": output_path,
                 "metadata_path": metadata_path,
@@ -816,7 +634,6 @@ class SpeechService:
             )
             raise
         finally:
-            # Optionally clean up cache directory
             if cleanup_cache:
                 logger.info(
                     f"Cleaning up cache directory: {cache_dir}"
