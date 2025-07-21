@@ -1,7 +1,7 @@
 import os
 import logging
 import re
-from typing import List, Optional, Dict, Union, Literal, Any
+from typing import List, Optional, Dict, Union, Literal, Any, IO
 from jira import JIRA
 from datetime import datetime
 
@@ -768,3 +768,55 @@ class JiraClient:
                     f"Error deleting issue {issue_key}: {error_msg}"
                 )
                 raise
+
+    def add_attachment(
+        self,
+        issue: Union[str, Any],
+        file_path: str
+    ) -> None:
+        """Add an attachment to a JIRA issue from file path.
+
+        Args:
+            issue: JIRA issue key (str) or issue object
+            file_path: Path to the file to upload
+
+        Examples:
+            jira_client.add_attachment(
+                issue='PROJ-123',
+                file_path='/some/path/attachment.txt'
+            )
+
+        Raises:
+            ValueError: If file not found
+            Exception: If there's an error uploading the attachment
+        """
+        try:
+            # Handle issue parameter - convert string to issue object if needed
+            if isinstance(issue, str):
+                issue_obj = self.client.issue(issue)
+            else:
+                issue_obj = issue
+
+            # Check if file exists
+            if not os.path.exists(file_path):
+                raise ValueError(f"File not found: {file_path}")
+
+            # Upload using file path
+            self.client.add_attachment(
+                issue=issue_obj,
+                attachment=file_path
+            )
+
+            filename = os.path.basename(file_path)
+            logging.info(
+                f"Successfully uploaded attachment '{filename}' "
+                f"to issue {issue_obj.key}"
+            )
+
+        except Exception as e:
+            logging.error(
+                f"Error uploading attachment to issue "
+                f"{issue_obj.key if 'issue_obj' in locals() else issue}: "
+                f"{str(e)}"
+            )
+            raise
