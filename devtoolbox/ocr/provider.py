@@ -40,8 +40,7 @@ class BaseOCRProvider(ABC):
             raise ValueError("Config must be an instance of BaseOCRConfig")
         self.config = config
 
-    @abstractmethod
-    async def _recognize_raw(
+    def _recognize_raw(
         self,
         file_path: Union[str, Path],
         **kwargs
@@ -71,7 +70,7 @@ class BaseOCRProvider(ABC):
         """
         pass
 
-    async def recognize(
+    def recognize(
         self,
         file_path: Union[str, Path],
         **kwargs
@@ -86,10 +85,10 @@ class BaseOCRProvider(ABC):
         Returns:
             List of text lines
         """
-        raw_result = await self._recognize_raw(file_path, **kwargs)
+        raw_result = self._recognize_raw(file_path, **kwargs)
         return self._convert_to_text(raw_result)
 
-    async def analyze_image(
+    def analyze_image(
         self,
         image_path: Union[str, Path],
         **kwargs
@@ -104,10 +103,10 @@ class BaseOCRProvider(ABC):
         Returns:
             List of text lines
         """
-        raw_result = await self._recognize_raw(image_path, **kwargs)
+        raw_result = self._recognize_raw(image_path, **kwargs)
         return self._convert_to_text(raw_result)
 
-    async def analyze_document(
+    def analyze_document(
         self,
         document_path: Union[str, Path],
         **kwargs
@@ -122,5 +121,5 @@ class BaseOCRProvider(ABC):
         Returns:
             List of text lines
         """
-        raw_result = await self._recognize_raw(document_path, **kwargs)
+        raw_result = self._recognize_raw(document_path, **kwargs)
         return self._convert_to_text(raw_result)

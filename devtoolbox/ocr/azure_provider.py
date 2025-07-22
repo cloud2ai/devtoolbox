@@ -101,7 +101,7 @@ class AzureOCRProvider(BaseOCRProvider):
         wait=wait_exponential(multiplier=1, min=4, max=30),
         before_sleep=before_sleep_log(logger, logging.WARNING)
     )
-    async def _recognize_raw(
+    def _recognize_raw(
         self,
         file_path: Union[str, Path],
         **kwargs

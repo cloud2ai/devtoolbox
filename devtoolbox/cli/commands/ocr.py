@@ -53,9 +53,8 @@ def get_service(
             api_key=api_key,
             endpoint=endpoint
         )
-        provider = AzureOCRProvider(config)
-        return OCRService(provider)
-    return OCRService()
+        return OCRService(config)
+    return OCRService(AzureOCRConfig())
 
 
 @app.command("recognize")
@@ -91,7 +90,7 @@ def recognize(
         service = get_service(api_key, endpoint)
 
         # Run recognition
-        lines = asyncio.run(service.recognize(file_path))
+        lines = service.recognize(file_path)
 
         # Output results
         if output:
