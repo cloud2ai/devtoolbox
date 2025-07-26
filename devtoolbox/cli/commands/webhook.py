@@ -192,3 +192,47 @@ def send_file(
         )
         typer.echo(f"Failed to send file message: {str(e)}")
         raise typer.Exit(1)
+
+
+@app.command("feishu-card")
+def send_feishu_card(
+    url: str = typer.Option(
+        ..., "-u", "--url", help="Feishu webhook URL to send message to"
+    ),
+    title: str = typer.Option(
+        ..., "-t", "--title", help="Card title"
+    ),
+    content: str = typer.Option(
+        ..., "-c", "--content", help="Markdown content for card body"
+    ),
+    template_color: str = typer.Option(
+        "blue", "--color", help="Header color: blue, green, red, grey"
+    ),
+    wide_screen: bool = typer.Option(
+        True, "--wide-screen/--no-wide-screen", help="Wide screen mode"
+    ),
+):
+    """
+    Send a Feishu (Lark) interactive card message via webhook
+    """
+    logger.debug(
+        "Sending Feishu card message to %s: title=%s, color=%s, wide_screen=%s",
+        url, title, template_color, wide_screen
+    )
+    webhook = Webhook(url)
+    try:
+        webhook.send_feishu_card_message(
+            title=title,
+            markdown_content=content,
+            template_color=template_color,
+            wide_screen_mode=wide_screen
+        )
+        typer.echo("Feishu card message sent successfully")
+    except Exception as e:
+        logger.error(
+            "Failed to send Feishu card message: %s",
+            str(e),
+            exc_info=True
+        )
+        typer.echo(f"Failed to send Feishu card message: {str(e)}")
+        raise typer.Exit(1)

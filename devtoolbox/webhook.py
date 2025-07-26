@@ -8,9 +8,12 @@ Note:
     webhook API. The payload formats and parameters follow the official
     WeCom documentation.
 
-    For other webhook platforms (e.g., Slack, DingTalk, Feishu, custom
-    HTTP endpoints), you can use the _send_request method directly to
-    send custom payloads. In the future, this module may be extended to
+    The send_feishu_card_message method is designed for Feishu (Lark)
+    webhook API, supporting interactive cards with markdown content.
+
+    For other webhook platforms (e.g., Slack, DingTalk, custom HTTP
+    endpoints), you can use the send_request method directly to send
+    custom payloads. In the future, this module may be extended to
     support more platforms and message types.
 """
 import logging
@@ -52,6 +55,10 @@ class Webhook:
         :param mentioned_mobile_list: List of mobile numbers to mention in
                                       the message.
         """
+        logger.debug(
+            f"Sending WeCom text message with {len(content)} characters"
+        )
+
         payload = {
             "msgtype": "text",
             "text": {
@@ -62,13 +69,27 @@ class Webhook:
         }
         self.send_request(payload)
 
+        logger.info(
+            f"Successfully sent WeCom text message to webhook "
+            f"{self.webhook_url}"
+        )
+
     def send_markdown_message(self, content):
         """
         Send a Markdown formatted message via the webhook.
         :param content: The Markdown content of the message.
         """
+        logger.debug(
+            f"Sending WeCom markdown message with {len(content)} characters"
+        )
+
         payload = {"msgtype": "markdown", "markdown": {"content": content}}
         self.send_request(payload)
+
+        logger.info(
+            f"Successfully sent WeCom markdown message to webhook "
+            f"{self.webhook_url}"
+        )
 
     def send_image_message(self, base64, md5):
         """
@@ -76,8 +97,17 @@ class Webhook:
         :param base64: Base64-encoded content of the image.
         :param md5: MD5 hash of the image content before Base64 encoding.
         """
+        logger.debug(
+            f"Sending WeCom image message with md5: {md5}"
+        )
+
         payload = {"msgtype": "image", "image": {"base64": base64, "md5": md5}}
         self.send_request(payload)
+
+        logger.info(
+            f"Successfully sent WeCom image message to webhook "
+            f"{self.webhook_url}"
+        )
 
     def send_file_message(self, media_id):
         """
@@ -85,8 +115,78 @@ class Webhook:
         :param media_id: Media ID of the file obtained through the file
                          upload interface.
         """
+        logger.debug(
+            f"Sending WeCom file message with media_id: {media_id}"
+        )
+
         payload = {"msgtype": "file", "file": {"media_id": media_id}}
         self.send_request(payload)
+
+        logger.info(
+            f"Successfully sent WeCom file message to webhook "
+            f"{self.webhook_url}"
+        )
+
+    def send_feishu_card_message(
+        self,
+        title: str,
+        markdown_content: str,
+        template_color: str = "blue",
+        wide_screen_mode: bool = True
+    ):
+        """
+        Send a Feishu (Lark) interactive card message via the webhook.
+
+        This method creates an interactive card with markdown content,
+        which is a common format for Feishu webhook messages.
+
+        :param title: The title of the card header
+        :param markdown_content: Markdown formatted content for the card body
+        :param template_color: Color template for the header
+                               (blue, green, red, grey)
+        :param wide_screen_mode: Whether to enable wide screen mode
+        """
+        logger.debug(
+            f"Sending Feishu card message: title='{title}', "
+            f"color='{template_color}', wide_screen={wide_screen_mode}"
+        )
+
+        payload = {
+            "msg_type": "interactive",
+            "card": {
+                "config": {
+                    "wide_screen_mode": wide_screen_mode
+                },
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": title
+                    },
+                    "template": template_color
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": markdown_content
+                        }
+                    }
+                ]
+            }
+        }
+
+        logger.debug(
+            f"Feishu card payload prepared with {len(markdown_content)} "
+            f"characters of markdown content"
+        )
+
+        self.send_request(payload)
+
+        logger.info(
+            f"Successfully sent Feishu card message: '{title}' "
+            f"to webhook {self.webhook_url}"
+        )
 
     def send_request(self, payload):
         """
@@ -105,7 +205,9 @@ class Webhook:
         try:
             # Send POST request to webhook
             response = requests.post(
-                self.webhook_url, headers=headers, data=json.dumps(payload)
+                self.webhook_url,
+                headers=headers,
+                data=json.dumps(payload)
             )
             # Check for HTTP errors
             response.raise_for_status()
