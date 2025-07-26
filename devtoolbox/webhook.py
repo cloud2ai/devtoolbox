@@ -1,3 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+Webhook utility for sending messages to various platforms.
+
+Note:
+    The send_text_message, send_markdown_message, send_image_message,
+    and send_file_message methods are designed for WeCom (WeChat Work)
+    webhook API. The payload formats and parameters follow the official
+    WeCom documentation.
+
+    For other webhook platforms (e.g., Slack, DingTalk, Feishu, custom
+    HTTP endpoints), you can use the _send_request method directly to
+    send custom payloads. In the future, this module may be extended to
+    support more platforms and message types.
+"""
 import logging
 import json
 import requests
@@ -8,7 +23,16 @@ logger = logging.getLogger(__name__)
 class Webhook:
     """
     A class for sending messages to a webhook endpoint.
-    Supports various message types including text, markdown, image and file.
+
+    Most send_xxx methods (text, markdown, image, file) are designed
+    for WeCom (WeChat Work/企业微信) webhook API, and may not be
+    compatible with other platforms' webhook formats.
+
+    For other webhook platforms, you can call _send_request directly
+    with your own payload structure.
+
+    This class can be extended in the future to support more platforms
+    and message types as needed.
     """
 
     def __init__(self, webhook_url):
@@ -36,7 +60,7 @@ class Webhook:
                 "mentioned_mobile_list": mentioned_mobile_list,
             },
         }
-        self._send_request(payload)
+        self.send_request(payload)
 
     def send_markdown_message(self, content):
         """
@@ -44,7 +68,7 @@ class Webhook:
         :param content: The Markdown content of the message.
         """
         payload = {"msgtype": "markdown", "markdown": {"content": content}}
-        self._send_request(payload)
+        self.send_request(payload)
 
     def send_image_message(self, base64, md5):
         """
@@ -53,7 +77,7 @@ class Webhook:
         :param md5: MD5 hash of the image content before Base64 encoding.
         """
         payload = {"msgtype": "image", "image": {"base64": base64, "md5": md5}}
-        self._send_request(payload)
+        self.send_request(payload)
 
     def send_file_message(self, media_id):
         """
@@ -62,9 +86,9 @@ class Webhook:
                          upload interface.
         """
         payload = {"msgtype": "file", "file": {"media_id": media_id}}
-        self._send_request(payload)
+        self.send_request(payload)
 
-    def _send_request(self, payload):
+    def send_request(self, payload):
         """
         Internal method to send an HTTP POST request to the webhook.
         Handles request sending, error logging and exception handling.
@@ -75,11 +99,8 @@ class Webhook:
         headers = {"Content-Type": "application/json"}
 
         # Log the request details
-        logger.debug(
-            "Sending data %s to webhook %s...",
-            payload,
-            self.webhook_url
-        )
+        logger.debug(f"Sending data {payload} to "
+                     f"webhook {self.webhook_url}...")
 
         try:
             # Send POST request to webhook
@@ -91,9 +112,7 @@ class Webhook:
         except requests.exceptions.RequestException as e:
             # Log error details and re-raise the exception
             logger.error(
-                "Failed to send message. Error: %s, "
-                "Status: %s",
-                str(e),
-                getattr(e.response, "status_code", "N/A")
+                f"Failed to send message. Error: {str(e)}, "
+                f"Status: {getattr(e.response, 'status_code', 'N/A')}"
             )
             raise
