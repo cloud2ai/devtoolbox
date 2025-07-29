@@ -247,7 +247,7 @@ class AzureOpenAIProvider(OpenAIProvider):
         except Exception as e:
             if "rate_limit" in str(e).lower():
                 raise OpenAIRateLimitError("Rate limit exceeded")
-            raise OpenAIError("Azure OpenAI API error")
+            raise OpenAIError(f"Azure OpenAI API error: {e}")
 
     def complete(
         self,
