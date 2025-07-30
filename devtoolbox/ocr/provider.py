@@ -4,11 +4,11 @@ This module provides the base classes for OCR providers.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Any
 from pathlib import Path
-import os
+from typing import Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -40,55 +40,48 @@ class BaseOCRProvider(ABC):
             raise ValueError("Config must be an instance of BaseOCRConfig")
         self.config = config
 
-    def _recognize_raw(
+    @abstractmethod
+    def validate_image_compliance(
         self,
-        file_path: Union[str, Path],
-        **kwargs
-    ) -> Any:
+        image_path: Union[str, Path]
+    ) -> Tuple[bool, str]:
         """
-        Perform raw OCR recognition on a file
+        Validate if image meets provider-specific requirements.
+
+        This method must be implemented by each provider to implement
+        their specific image validation requirements (file size, dimensions,
+        format, etc.).
 
         Args:
-            file_path: Path to the file
-            **kwargs: Additional provider-specific parameters
+            image_path: Path to the image file
 
         Returns:
-            Raw result from the OCR provider
+            Tuple of (is_compliant, reason)
         """
         pass
 
     @abstractmethod
-    def _convert_to_text(self, raw_result: Any) -> List[str]:
+    def validate_document_compliance(
+        self,
+        document_path: Union[str, Path]
+    ) -> Tuple[bool, str]:
         """
-        Convert provider-specific result to list of text lines
+        Validate if document meets provider-specific requirements.
+
+        This method must be implemented by each provider to implement
+        their specific document validation requirements (file size, format,
+        etc.).
 
         Args:
-            raw_result: Raw result from the OCR provider
+            document_path: Path to the document file
 
         Returns:
-            List of text lines
+            Tuple of (is_compliant, reason)
         """
         pass
 
-    def recognize(
-        self,
-        file_path: Union[str, Path],
-        **kwargs
-    ) -> List[str]:
-        """
-        Recognize text from a file (image, PDF, etc.)
-
-        Args:
-            file_path: Path to the file
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            List of text lines
-        """
-        raw_result = self._recognize_raw(file_path, **kwargs)
-        return self._convert_to_text(raw_result)
-
-    def analyze_image(
+    @abstractmethod
+    def recognize_image_raw(
         self,
         image_path: Union[str, Path],
         **kwargs
@@ -103,10 +96,10 @@ class BaseOCRProvider(ABC):
         Returns:
             List of text lines
         """
-        raw_result = self._recognize_raw(image_path, **kwargs)
-        return self._convert_to_text(raw_result)
+        pass
 
-    def analyze_document(
+    @abstractmethod
+    def recognize_document_raw(
         self,
         document_path: Union[str, Path],
         **kwargs
@@ -121,5 +114,4 @@ class BaseOCRProvider(ABC):
         Returns:
             List of text lines
         """
-        raw_result = self._recognize_raw(document_path, **kwargs)
-        return self._convert_to_text(raw_result)
+        pass

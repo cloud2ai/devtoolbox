@@ -5,25 +5,29 @@ operations.
 """
 
 import logging
-from dataclasses import dataclass, field
-from typing import List, Union, Any
-from pathlib import Path
 import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, List, Tuple, Union
 
-from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.core.exceptions import HttpResponseError, ClientAuthenticationError
+from azure.core.credentials import AzureKeyCredential
+from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
 from tenacity import (
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
+    retry_if_result,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log,
-    wait_random_exponential,
-    retry_if_result
+    wait_random_exponential
 )
 
 from devtoolbox.ocr.provider import BaseOCRConfig, BaseOCRProvider
+from devtoolbox.ocr.utils import (
+    validate_document_for_ocr,
+    validate_image_for_ocr
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,62 +148,50 @@ class AzureOCRProvider(BaseOCRProvider):
         wait=wait_random_exponential(multiplier=1, min=4, max=60),
         before_sleep=before_sleep_log(logger, logging.WARNING)
     )
-    def _recognize_raw(
+    def recognize_image_raw(
         self,
-        file_path: Union[str, Path],
+        image_path: Union[str, Path],
         **kwargs
-    ) -> Any:
+    ) -> List[str]:
         """
-        Perform raw OCR recognition using Azure Document Intelligence
+        Analyze an image and extract text using Azure Document Intelligence
 
         Args:
-            file_path: Path to the file
+            image_path: Path to the image file
             **kwargs: Additional parameters for Azure Document Intelligence
 
         Returns:
-            Raw result from Azure Document Intelligence
+            List of recognized text lines
 
         Raises:
             AzureOCRProcessingException: If processing fails
             FileNotFoundError: If file doesn't exist
         """
         try:
-            # Basic file validation
-            file_path = Path(file_path)
-            if not file_path.exists():
-                raise FileNotFoundError(f"File not found: {file_path}")
+            image_path = Path(image_path)
+            logger.info(f"Processing image: {image_path}")
 
-            # Check file size (Azure has limits)
-            file_size = file_path.stat().st_size
-            if file_size > 500 * 1024 * 1024:  # 500MB limit
-                raise AzureOCRProcessingException(
-                    f"File too large ({file_size} bytes). "
-                    "Azure limit is 500MB"
-                )
-
-            logger.info(f"Processing file: {file_path} ({file_size} bytes)")
-
-            # Read and process file
+            # Read and process image
             try:
-                with open(file_path, "rb") as f:
+                with open(image_path, "rb") as f:
                     poller = self.client.begin_analyze_document(
                         "prebuilt-read",
                         body=f,
                         **kwargs
                     )
             except (OSError, IOError) as e:
-                logger.error(f"Failed to read file {file_path}: {e}")
+                logger.error(f"Failed to read image {image_path}: {e}")
                 raise AzureOCRProcessingException(
-                    f"File read error: {e}"
+                    f"Image read error: {e}"
                 )
 
-            logger.info("Document analysis started, waiting for completion")
+            logger.info("Image analysis started, waiting for completion")
 
             # Wait for completion with timeout handling
             try:
                 result = poller.result()
-                logger.info("Document analysis completed successfully")
-                return result
+                logger.info("Image analysis completed successfully")
+                return self._convert_to_text(result)
             except HttpResponseError as e:
                 # Handle specific error types
                 status_code = e.response.status_code
@@ -224,13 +216,150 @@ class AzureOCRProvider(BaseOCRProvider):
                     raise AzureOCRProcessingException(
                         f"Authentication failed: {e}"
                     )
+                elif status_code == 400:
+                    # Handle InvalidContentDimensions and other 400 errors
+                    error_message = str(e).lower()
+                    if "invalidcontentdimensions" in error_message:
+                        logger.warning(
+                            "Azure returned InvalidContentDimensions error. "
+                            "Image may be too small or have invalid dimensions."
+                        )
+                        return []  # Return empty list instead of raising
+                    else:
+                        logger.error(f"Azure API error ({status_code}): {e}")
                 else:
                     logger.error(f"Azure API error ({status_code}): {e}")
 
                 # Re-raise HttpResponseError for retry decorator to handle
                 raise
             except Exception as e:
-                logger.error(f"Unexpected error during analysis: {e}")
+                logger.error(f"Unexpected error during image analysis: {e}")
+                raise AzureOCRProcessingException(
+                    f"Image analysis failed: {e}"
+                )
+
+        except FileNotFoundError:
+            raise
+        except AzureOCRProcessingException:
+            raise
+        except HttpResponseError as e:
+            # Log detailed error information before re-raising
+            status_code = e.response.status_code
+            reason = getattr(e.response, 'reason', 'Unknown')
+            error_message = str(e)
+
+            # Extract additional error details if available
+            error_details = ""
+            if hasattr(e, 'error') and e.error:
+                error_details = f" Error details: {e.error}"
+            elif hasattr(e, 'model') and e.model:
+                error_details = f" Model error: {e.model}"
+
+            logger.error(
+                f"Azure HTTP error: {status_code} {reason}. "
+                f"Message: {error_message}{error_details}"
+            )
+
+            # Re-raise HttpResponseError for retry decorator to handle
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during image processing: {e}")
+            raise AzureOCRProcessingException(
+                f"Image processing failed: {e}"
+            )
+
+    @retry(
+        retry=_should_retry_http_error,
+        stop=stop_after_attempt(5),
+        wait=wait_random_exponential(multiplier=1, min=4, max=60),
+        before_sleep=before_sleep_log(logger, logging.WARNING)
+    )
+    def recognize_document_raw(
+        self,
+        document_path: Union[str, Path],
+        **kwargs
+    ) -> List[str]:
+        """
+        Analyze a document and extract text using Azure Document Intelligence
+
+        Args:
+            document_path: Path to the document file
+            **kwargs: Additional parameters for Azure Document Intelligence
+
+        Returns:
+            List of recognized text lines
+
+        Raises:
+            AzureOCRProcessingException: If processing fails
+            FileNotFoundError: If file doesn't exist
+        """
+        try:
+            document_path = Path(document_path)
+            logger.info(f"Processing document: {document_path}")
+
+            # Read and process document
+            try:
+                with open(document_path, "rb") as f:
+                    poller = self.client.begin_analyze_document(
+                        "prebuilt-read",
+                        body=f,
+                        **kwargs
+                    )
+            except (OSError, IOError) as e:
+                logger.error(f"Failed to read document {document_path}: {e}")
+                raise AzureOCRProcessingException(
+                    f"Document read error: {e}"
+                )
+
+            logger.info("Document analysis started, waiting for completion")
+
+            # Wait for completion with timeout handling
+            try:
+                result = poller.result()
+                logger.info("Document analysis completed successfully")
+                return self._convert_to_text(result)
+            except HttpResponseError as e:
+                # Handle specific error types
+                status_code = e.response.status_code
+
+                if status_code == 429:
+                    logger.warning(
+                        "Rate limit exceeded (429). Azure Document "
+                        "Intelligence service is throttling requests. "
+                        "Retrying with exponential backoff..."
+                    )
+                elif status_code in [500, 502, 503, 504]:
+                    logger.warning(
+                        f"Server error ({status_code}). "
+                        "Retrying with exponential backoff..."
+                    )
+                elif status_code == 401:
+                    logger.error(
+                        "Authentication failed (401). Invalid API key or "
+                        "endpoint. This error will not be retried."
+                    )
+                    # Don't retry authentication errors
+                    raise AzureOCRProcessingException(
+                        f"Authentication failed: {e}"
+                    )
+                elif status_code == 400:
+                    # Handle InvalidContentDimensions and other 400 errors
+                    error_message = str(e).lower()
+                    if "invalidcontentdimensions" in error_message:
+                        logger.warning(
+                            "Azure returned InvalidContentDimensions error. "
+                            "Document may be too small or have invalid dimensions."
+                        )
+                        return []  # Return empty list instead of raising
+                    else:
+                        logger.error(f"Azure API error ({status_code}): {e}")
+                else:
+                    logger.error(f"Azure API error ({status_code}): {e}")
+
+                # Re-raise HttpResponseError for retry decorator to handle
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error during document analysis: {e}")
                 raise AzureOCRProcessingException(
                     f"Document analysis failed: {e}"
                 )
@@ -341,43 +470,36 @@ class AzureOCRProvider(BaseOCRProvider):
                 f"Text conversion failed: {e}"
             )
 
-    def recognize(
+    def validate_image_compliance(
         self,
-        file_path: Union[str, Path],
-        **kwargs
-    ) -> List[str]:
+        image_path: Union[str, Path]
+    ) -> Tuple[bool, str]:
         """
-        Recognize text from document using Azure Document Intelligence
+        Validate if image meets Azure Document Intelligence requirements.
+
+        Uses the existing validation logic from utils.py.
 
         Args:
-            file_path: Path to the document file
-            **kwargs: Additional parameters for Azure Document Intelligence
+            image_path: Path to the image file
 
         Returns:
-            List of recognized text lines
-
-        Raises:
-            AzureOCRProcessingException: If recognition fails
+            Tuple of (is_compliant, reason)
         """
-        try:
-            logger.info(f"Starting OCR recognition for: {file_path}")
+        return validate_image_for_ocr(Path(image_path), "azure")
 
-            # Perform recognition
-            raw_result = self._recognize_raw(file_path, **kwargs)
+    def validate_document_compliance(
+        self,
+        document_path: Union[str, Path]
+    ) -> Tuple[bool, str]:
+        """
+        Validate if document meets Azure Document Intelligence requirements.
 
-            # Convert to text
-            text_lines = self._convert_to_text(raw_result)
+        Uses the existing validation logic from utils.py.
 
-            logger.info(f"OCR recognition completed successfully. "
-                       f"Extracted {len(text_lines)} lines")
+        Args:
+            document_path: Path to the document file
 
-            return text_lines
-
-        except FileNotFoundError as e:
-            logger.error(f"File not found: {e}")
-            raise
-        except AzureOCRProcessingException:
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during OCR recognition: {e}")
-            raise AzureOCRProcessingException(f"OCR recognition failed: {e}")
+        Returns:
+            Tuple of (is_compliant, reason)
+        """
+        return validate_document_for_ocr(Path(document_path), "azure")
