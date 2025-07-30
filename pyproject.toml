@@ -142,7 +142,11 @@ ocr = [
 
     # NumPy for array operations
     # Used in: devtoolbox/ocr/azure_provider.py
-    "numpy>=1.24.0"
+    "numpy>=1.24.0",
+
+    # Image processing for OCR validation
+    # Used in: devtoolbox/ocr/utils.py
+    "Pillow>=10.2.0"
 ]
 
 # LLM related dependencies
