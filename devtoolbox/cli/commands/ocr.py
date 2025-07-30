@@ -84,6 +84,13 @@ def recognize(
 ):
     """
     Recognize text from a file (image, PDF, etc.)
+
+    Features:
+    - Supports various image formats (JPEG, PNG, BMP, TIFF, etc.)
+    - Automatic retry for temporary errors (429, 500, 502, 503, 504)
+    - Detailed error reporting for debugging
+    - File size validation (max 500MB)
+    - Comprehensive logging for monitoring
     """
     try:
         # Initialize service

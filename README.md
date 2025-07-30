@@ -172,12 +172,27 @@ However, as I worked on more and more projects, I realized that I hadn't properl
    export AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT="your-endpoint"
    export AZURE_DOCUMENT_INTELLIGENCE_KEY="your-key"
 
-   # Recognize text from image
+   # Recognize text from image (basic usage)
+   devtoolbox ocr recognize sample_data/ocr/input.jpg
+
+   # Recognize text and save to file
    devtoolbox ocr recognize sample_data/ocr/input.jpg \
-     --output sample_data/ocr/output.txt \
-     --provider azure \
-     --format txt
+     --output sample_data/ocr/output.txt
+
+   # Recognize text with custom API credentials
+   devtoolbox ocr recognize sample_data/ocr/input.jpg \
+     --api-key "your-api-key" \
+     --endpoint "your-endpoint" \
+     --output sample_data/ocr/output.txt
    ```
+
+   **OCR Features:**
+   - Supports various image formats (JPEG, PNG, BMP, TIFF, etc.)
+   - Automatic retry for temporary errors (429, 500, 502, 503, 504)
+   - Detailed error reporting for debugging
+   - File size validation (max 500MB)
+   - Comprehensive logging for monitoring
+   - Authentication error handling (401 errors fail fast)
 
    **Storage Operations**
    ```bash
