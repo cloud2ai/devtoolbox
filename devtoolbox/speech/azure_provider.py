@@ -139,6 +139,23 @@ class AzureConfig(BaseSpeechConfig):
         default_factory=lambda: os.environ.get('AZURE_CONTAINER_NAME', 'speech-audio')
     )
 
+    # Retry configuration for upload operations only
+    upload_retry_attempts: int = field(
+        default_factory=lambda: int(
+            os.environ.get('AZURE_UPLOAD_RETRY_ATTEMPTS', '3')
+        )
+    )
+    upload_retry_min_wait: int = field(
+        default_factory=lambda: int(
+            os.environ.get('AZURE_UPLOAD_RETRY_MIN_WAIT', '4')
+        )
+    )
+    upload_retry_max_wait: int = field(
+        default_factory=lambda: int(
+            os.environ.get('AZURE_UPLOAD_RETRY_MAX_WAIT', '10')
+        )
+    )
+
     def __post_init__(self):
         """Validate configuration and log loading process."""
         self._log_config_loading()
@@ -584,7 +601,8 @@ class AzureProvider(BaseSpeechProvider):
                 return status_data
             elif status in ("Failed", "FailedWithPartialResults"):
                 logger.error(
-                    f"[BATCH_FAIL] id={transcription_id} blob_name={blob_name} data={status_data}"
+                    f"[BATCH_FAIL] id={transcription_id} blob_name="
+                    f"{blob_name} data={status_data}"
                 )
                 raise AzureRecognitionError(
                     f"Transcription failed: id={transcription_id} "
@@ -592,7 +610,8 @@ class AzureProvider(BaseSpeechProvider):
                 )
             else:
                 logger.info(
-                    f"[BATCH_STATUS] id={transcription_id} blob_name={blob_name} status={status}"
+                    f"[BATCH_STATUS] id={transcription_id} "
+                    f"blob_name={blob_name} status={status}"
                 )
                 time.sleep(10)
 

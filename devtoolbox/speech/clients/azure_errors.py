@@ -17,3 +17,11 @@ class AzureSynthesisError(AzureError):
 class AzureRecognitionError(AzureError):
     """Raised when speech recognition fails"""
     pass
+
+class AzureNetworkError(AzureError):
+    """Raised when network-related errors occur (timeout, connection issues)"""
+    pass
+
+class AzureUploadError(AzureError):
+    """Raised when blob upload fails"""
+    pass

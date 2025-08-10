@@ -16,6 +16,8 @@ from azure.cognitiveservices.speech import ResultReason, CancellationReason
 from devtoolbox.speech.azure_provider import (
     AzureConfig,
     AzureProvider,
+)
+from devtoolbox.speech.clients.azure_errors import (
     AzureError,
     AzureSynthesisError,
 )
@@ -78,7 +80,6 @@ def azure_config():
         subscription_key='test-key',
         service_region='eastus',
         voice_name='en-US-JennyNeural',
-        language='en-US',
         rate=1.0
     )
 
@@ -97,7 +98,7 @@ class TestAzureConfig:
         monkeypatch.setenv('AZURE_SPEECH_KEY', 'test-key')
         monkeypatch.setenv('AZURE_SPEECH_REGION', 'eastus')
         monkeypatch.setenv('AZURE_SPEECH_VOICE', 'en-US-JennyNeural')
-        monkeypatch.setenv('AZURE_SPEECH_LANGUAGE', 'en-US')
+
         monkeypatch.setenv('AZURE_SPEECH_RATE', '1.0')
 
         config = AzureConfig()
@@ -105,7 +106,7 @@ class TestAzureConfig:
         assert config.subscription_key == 'test-key'
         assert config.service_region == 'eastus'
         assert config.voice_name == 'en-US-JennyNeural'
-        assert config.language == 'en-US'
+        assert 'en-US' in config.supported_languages
         assert config.rate == 1.0
 
     def test_config_validation_error(self):

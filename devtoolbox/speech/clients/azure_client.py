@@ -19,8 +19,20 @@ from azure.storage.blob import (
     ContentSettings,
     generate_blob_sas,
 )
+from azure.core.exceptions import ServiceResponseError
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 
-from devtoolbox.speech.clients.azure_errors import AzureRecognitionError
+from devtoolbox.speech.clients.azure_errors import (
+    AzureRecognitionError,
+    AzureNetworkError,
+    AzureUploadError
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,6 +45,11 @@ class AzureClient:
     Azure REST API and Blob Storage client for speech batch transcription.
     """
     DEFAULT_CONTENT_TYPE = "audio/wav"
+
+    # Retry configuration constants (only for upload operations)
+    UPLOAD_RETRY_ATTEMPTS = 3
+    UPLOAD_RETRY_MIN_WAIT = 4
+    UPLOAD_RETRY_MAX_WAIT = 10
 
     def __init__(self, config: "AzureConfig"):
         """
@@ -53,6 +70,27 @@ class AzureClient:
             credential=config.storage_key
         )
 
+        # Load retry configuration from config or use defaults
+        self.upload_retry_attempts = getattr(
+            config, 'upload_retry_attempts', self.UPLOAD_RETRY_ATTEMPTS
+        )
+        self.upload_retry_min_wait = getattr(
+            config, 'upload_retry_min_wait', self.UPLOAD_RETRY_MIN_WAIT
+        )
+        self.upload_retry_max_wait = getattr(
+            config, 'upload_retry_max_wait', self.UPLOAD_RETRY_MAX_WAIT
+        )
+
+    @retry(
+        retry=retry_if_exception_type(AzureUploadError),
+        stop=stop_after_attempt(UPLOAD_RETRY_ATTEMPTS),
+        wait=wait_exponential(
+            multiplier=1,
+            min=UPLOAD_RETRY_MIN_WAIT,
+            max=UPLOAD_RETRY_MAX_WAIT
+        ),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     def upload_blob(self, file_path: str) -> Tuple[str, str]:
         """
         Upload a file to Azure Blob Storage and return (blob_name, sas_url).
@@ -67,6 +105,8 @@ class AzureClient:
         container_client = self.blob_service_client.get_container_client(
             self.config.container_name
         )
+
+        # Create container if it doesn't exist
         try:
             container_client.create_container()
         except Exception as e:
@@ -74,6 +114,8 @@ class AzureClient:
             logger.info(
                 f"Create container exception: {e}"
             )
+
+        # Upload blob with retry logic
         try:
             with open(file_path, "rb") as data:
                 container_client.upload_blob(
@@ -82,13 +124,28 @@ class AzureClient:
                     overwrite=True,
                     content_settings=ContentSettings(
                         content_type=self.DEFAULT_CONTENT_TYPE
-                    )
+                    ),
+                    # Add timeout configuration
+                    timeout=300  # 5 minutes timeout
                 )
+        except (ServiceResponseError, TimeoutError, ConnectionError) as e:
+            logger.error(
+                f"Upload blob failed (network error): {e} file={file_path}"
+            )
+            # Raise specific error for retry mechanism
+            raise AzureUploadError(
+                f"Network error during upload: {e}"
+            ) from e
         except Exception as e:
             logger.error(
-                f"Upload blob failed: {e} file={file_path}"
+                f"Upload blob failed (unexpected error): {e} file={file_path}"
             )
-            raise
+            # Don't retry for unexpected errors
+            raise AzureUploadError(
+                f"Unexpected error during upload: {e}"
+            ) from e
+
+        # Generate SAS token and URL
         sas_token = generate_blob_sas(
             account_name=self.config.storage_account,
             container_name=self.config.container_name,
@@ -141,6 +198,16 @@ class AzureClient:
                     f"Blob not accessible: url={blob_url} "
                     f"status={resp.status_code}"
                 )
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException) as e:
+            logger.error(
+                f"Blob accessibility check failed (network error): {e} "
+                f"url={blob_url}"
+            )
+            raise AzureNetworkError(
+                f"Network error checking blob accessibility: {e}"
+            ) from e
         except Exception as e:
             raise AzureRecognitionError(
                 f"Blob not accessible: url={blob_url} error={e}"
@@ -172,9 +239,20 @@ class AzureClient:
                 url, headers=self.headers, json=body, timeout=30
             )
             resp.raise_for_status()
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException) as e:
+            logger.error(
+                f"Batch transcription submit failed (network error): {e} "
+                f"url={url}"
+            )
+            raise AzureNetworkError(
+                f"Network error during batch submission: {e}"
+            ) from e
         except Exception as e:
             logger.error(
-                f"Batch transcription submit failed: {e} url={url}"
+                f"Batch transcription submit failed (unexpected error): {e} "
+                f"url={url}"
             )
             raise
         location = resp.headers.get("Location")
@@ -197,9 +275,26 @@ class AzureClient:
             f"{self.endpoint}/speechtotext/v3.0/transcriptions/"
             f"{transcription_id}"
         )
-        resp = requests.get(url, headers=self.headers, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException) as e:
+            logger.error(
+                f"Get transcription status failed (network error): "
+                f"{e} id={transcription_id}"
+            )
+            raise AzureNetworkError(
+                f"Network error getting status: {e}"
+            ) from e
+        except Exception as e:
+            logger.error(
+                f"Get transcription status failed (unexpected error): "
+                f"{e} id={transcription_id}"
+            )
+            raise
 
     def get_transcription_files(self, transcription_id: str) -> dict:
         """
@@ -215,9 +310,26 @@ class AzureClient:
             f"{self.endpoint}/speechtotext/v3.0/transcriptions/"
             f"{transcription_id}/files"
         )
-        resp = requests.get(url, headers=self.headers, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException) as e:
+            logger.error(
+                f"Get transcription files failed (network error): "
+                f"{e} id={transcription_id}"
+            )
+            raise AzureNetworkError(
+                f"Network error getting files: {e}"
+            ) from e
+        except Exception as e:
+            logger.error(
+                f"Get transcription files failed (unexpected error): "
+                f"{e} id={transcription_id}"
+            )
+            raise
 
     def download_transcription_result(self, result_url: str) -> str:
         """
@@ -229,9 +341,26 @@ class AzureClient:
         Returns:
             str: The transcription result text.
         """
-        resp = requests.get(result_url, timeout=30)
-        resp.raise_for_status()
-        return resp.text
+        try:
+            resp = requests.get(result_url, timeout=30)
+            resp.raise_for_status()
+            return resp.text
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException) as e:
+            logger.error(
+                f"Download transcription result failed (network error): "
+                f"{e} url={result_url}"
+            )
+            raise AzureNetworkError(
+                f"Network error downloading result: {e}"
+            ) from e
+        except Exception as e:
+            logger.error(
+                f"Download transcription result failed (unexpected error): "
+                f"{e} url={result_url}"
+            )
+            raise
 
     def _generate_random_blob_name(self, original_path: str) -> str:
         """
