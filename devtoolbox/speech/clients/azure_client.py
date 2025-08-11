@@ -40,6 +40,24 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from devtoolbox.speech.azure_provider import AzureConfig
 
+def _log_retry_attempt(retry_state):
+    """
+    Custom retry logging function to show retry attempts and details.
+
+    Args:
+        retry_state: The retry state object from tenacity
+    """
+    attempt_number = retry_state.attempt_number
+    max_attempts = retry_state.retry_object.stop.max_attempt_number
+    exception = retry_state.outcome.exception()
+    wait_time = retry_state.next_action.sleep
+
+    logger.warning(
+        f"[BLOB_UPLOAD_RETRY] Attempt {attempt_number}/{max_attempts} failed. "
+        f"Exception: {type(exception).__name__}: {exception}. "
+        f"Waiting {wait_time:.2f}s before next attempt."
+    )
+
 class AzureClient:
     """
     Azure REST API and Blob Storage client for speech batch transcription.
@@ -89,7 +107,7 @@ class AzureClient:
             min=UPLOAD_RETRY_MIN_WAIT,
             max=UPLOAD_RETRY_MAX_WAIT
         ),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=_log_retry_attempt,
     )
     def upload_blob(self, file_path: str) -> Tuple[str, str]:
         """
@@ -101,6 +119,12 @@ class AzureClient:
         Returns:
             tuple[str, str]: (blob_name, sas_url)
         """
+        logger.info(
+            f"[BLOB_UPLOAD] Starting upload with retry config: "
+            f"max_attempts={self.upload_retry_attempts}, "
+            f"wait_range={self.upload_retry_min_wait}-{self.upload_retry_max_wait}s"
+        )
+
         blob_name = self._generate_random_blob_name(file_path)
         container_client = self.blob_service_client.get_container_client(
             self.config.container_name
@@ -117,6 +141,10 @@ class AzureClient:
 
         # Upload blob with retry logic
         try:
+            logger.info(
+                f"[BLOB_UPLOAD] Starting upload attempt for file={file_path}, "
+                f"blob_name={blob_name}"
+            )
             with open(file_path, "rb") as data:
                 container_client.upload_blob(
                     name=blob_name,
@@ -128,9 +156,13 @@ class AzureClient:
                     # Add timeout configuration
                     timeout=300  # 5 minutes timeout
                 )
+            logger.info(
+                f"[BLOB_UPLOAD] Upload successful for blob_name={blob_name}"
+            )
         except (ServiceResponseError, TimeoutError, ConnectionError) as e:
             logger.error(
-                f"Upload blob failed (network error): {e} file={file_path}"
+                f"[BLOB_UPLOAD] Upload failed (network error): {e} "
+                f"file={file_path}, blob_name={blob_name}"
             )
             # Raise specific error for retry mechanism
             raise AzureUploadError(
@@ -138,7 +170,8 @@ class AzureClient:
             ) from e
         except Exception as e:
             logger.error(
-                f"Upload blob failed (unexpected error): {e} file={file_path}"
+                f"[BLOB_UPLOAD] Upload failed (unexpected error): {e} "
+                f"file={file_path}, blob_name={blob_name}"
             )
             # Don't retry for unexpected errors
             raise AzureUploadError(
