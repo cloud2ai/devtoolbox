@@ -34,7 +34,6 @@ from devtoolbox.speech.provider import (
     register_provider,
     register_config,
 )
-from devtoolbox.speech.utils import get_audio_duration
 
 logger = logging.getLogger(__name__)
 
@@ -425,11 +424,9 @@ class AzureProvider(BaseSpeechProvider):
         Unified entry for speech recognition.
         Write result to save_path as txt.
         """
-        duration = get_audio_duration(audio_path)
-        if force_batch or duration > self.MAX_REALTIME_DURATION:
-            text = self._batch_transcribe(audio_path, **kwargs)
-        else:
-            text = self._real_time_transcribe(audio_path, **kwargs)
+        # NOTE(Ray): As batch transcription is cheap, by default we use batch
+        # transcription.
+        text = self._batch_transcribe(audio_path, **kwargs)
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(text)
         return save_path
