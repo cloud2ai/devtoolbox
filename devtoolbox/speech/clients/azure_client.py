@@ -91,11 +91,7 @@ class AzureClient:
         self.headers = {
             "Ocp-Apim-Subscription-Key": config.subscription_key
         }
-        self.blob_service_client = BlobServiceClient(
-            f"https://{config.storage_account}.blob.core.windows.net",
-            credential=config.storage_key
-        )
-
+        
         # Load retry configuration from config or use defaults
         self.upload_retry_attempts = getattr(
             config, 'upload_retry_attempts', self.UPLOAD_RETRY_ATTEMPTS
@@ -105,6 +101,35 @@ class AzureClient:
         )
         self.upload_retry_max_wait = getattr(
             config, 'upload_retry_max_wait', self.UPLOAD_RETRY_MAX_WAIT
+        )
+        
+        # Load timeout configuration from config or use defaults
+        self.connection_timeout = getattr(
+            config, 'connection_timeout', self.CONNECTION_TIMEOUT
+        )
+        self.read_timeout = getattr(
+            config, 'read_timeout', self.READ_TIMEOUT
+        )
+        self.connection_pool_size = getattr(
+            config, 'connection_pool_size', self.CONNECTION_POOL_SIZE
+        )
+        
+        # Configure Azure SDK with comprehensive timeout settings
+        from azure.storage.blob import BlobServiceClient
+        from azure.core.pipeline.transport import RequestsTransport
+        
+        # Create custom transport with timeout settings
+        transport = RequestsTransport(
+            connection_timeout=self.connection_timeout,
+            read_timeout=self.read_timeout,
+            connection_verify=True,
+            connection_pool_size=self.connection_pool_size
+        )
+        
+        self.blob_service_client = BlobServiceClient(
+            f"https://{config.storage_account}.blob.core.windows.net",
+            credential=config.storage_key,
+            transport=transport
         )
 
     @retry(
