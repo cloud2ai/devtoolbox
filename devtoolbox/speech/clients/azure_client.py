@@ -69,6 +69,14 @@ class AzureClient:
     UPLOAD_RETRY_MIN_WAIT = 4
     UPLOAD_RETRY_MAX_WAIT = 10
 
+    # Timeout configuration constants
+    # CONNECTION_TIMEOUT: Connection establishment timeout
+    CONNECTION_TIMEOUT = 30
+    # READ_TIMEOUT: Read timeout for large files (30 minutes)
+    READ_TIMEOUT = 1800
+    # CONNECTION_POOL_SIZE: Connection pool size
+    CONNECTION_POOL_SIZE = 10
+
     def __init__(self, config: "AzureConfig"):
         """
         Initialize AzureClient with configuration.
@@ -141,9 +149,16 @@ class AzureClient:
 
         # Upload blob with retry logic
         try:
+            # Get file size for logging
+            file_size = os.path.getsize(file_path)
+            file_size_mb = file_size / (1024 * 1024)
+            estimated_time = file_size_mb * 7
+
             logger.info(
                 f"[BLOB_UPLOAD] Starting upload attempt for file={file_path}, "
-                f"blob_name={blob_name}"
+                f"blob_name={blob_name}, size={file_size_mb:.2f}MB, "
+                f"estimated_time={estimated_time:.1f}min, "
+                f"timeout={self.read_timeout}s"
             )
             with open(file_path, "rb") as data:
                 container_client.upload_blob(
@@ -153,8 +168,8 @@ class AzureClient:
                     content_settings=ContentSettings(
                         content_type=self.DEFAULT_CONTENT_TYPE
                     ),
-                    # Add timeout configuration
-                    timeout=300  # 5 minutes timeout
+                    # Use configured timeout instead of hardcoded value
+                    timeout=self.read_timeout
                 )
             logger.info(
                 f"[BLOB_UPLOAD] Upload successful for blob_name={blob_name}"
