@@ -59,9 +59,9 @@ class TestAzureOpenAIConfig:
         monkeypatch.setenv('AZURE_OPENAI_DEPLOYMENT', 'test-deployment')
         monkeypatch.setenv('AZURE_OPENAI_MODEL', 'gpt-4')
         monkeypatch.setenv('AZURE_OPENAI_TEMPERATURE', '0.5')
-        
+
         config = AzureOpenAIConfig()
-        
+
         assert config.api_key == 'test-key'
         assert config.api_base == 'https://test.openai.azure.com/'
         assert config.deployment == 'test-deployment'
@@ -73,13 +73,13 @@ class TestAzureOpenAIConfig:
         """Test validation error when required fields are missing"""
         with pytest.raises(ValueError, match="Azure OpenAI API key is required"):
             AzureOpenAIConfig(api_key="")._validate_config()
-        
+
         with pytest.raises(ValueError, match="Azure OpenAI endpoint URL is required"):
             AzureOpenAIConfig(
                 api_key="test-key",
                 api_base=""
             )._validate_config()
-        
+
         with pytest.raises(ValueError, match="Azure OpenAI deployment name is required"):
             AzureOpenAIConfig(
                 api_key="test-key",
@@ -104,9 +104,9 @@ class TestAzureOpenAIProvider:
             {"role": "assistant", "content": "Hi"},
             {"role": "unknown", "content": "Test"}
         ]
-        
+
         converted = azure_provider._convert_messages(messages)
-        
+
         assert len(converted) == 4
         assert isinstance(converted[0], SystemMessage)
         assert isinstance(converted[1], HumanMessage)
@@ -116,7 +116,7 @@ class TestAzureOpenAIProvider:
         )  # unknown roles default to HumanMessage
 
     def test_chat_with_parameters(self, azure_provider, mock_azure_chat_openai):
-        """Test chat with custom parameters"""
+        """Test chat with custom parameters returns raw AIMessage"""
         mock_response = AIMessage(content="Test response")
         azure_provider.llm.invoke.return_value = mock_response
 
@@ -127,7 +127,9 @@ class TestAzureOpenAIProvider:
             temperature=0.8
         )
 
-        assert response == "Test response"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         assert azure_provider.llm.max_tokens == 100
         assert azure_provider.llm.temperature == 0.8
 
@@ -137,7 +139,7 @@ class TestAzureOpenAIProvider:
         """Test chat rate limit with retry mechanism"""
         error = OpenAIRateLimitError("rate_limit exceeded")
         success_response = AIMessage(content="Success")
-        
+
         azure_provider.llm.invoke.side_effect = [
             error,
             success_response
@@ -145,14 +147,16 @@ class TestAzureOpenAIProvider:
 
         messages = [{"role": "user", "content": "Hello"}]
         response = azure_provider.chat(messages)
-        
-        assert response == "Success"
+
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Success"
         assert azure_provider.llm.invoke.call_count == 2
 
     def test_complete_converts_to_chat(
         self, azure_provider, mock_azure_chat_openai
     ):
-        """Test complete method converts to chat format"""
+        """Test complete method converts to chat format and returns raw AIMessage"""
         mock_response = AIMessage(content="Completion")
         azure_provider.llm.invoke.return_value = mock_response
 
@@ -162,7 +166,9 @@ class TestAzureOpenAIProvider:
             temperature=0.9
         )
 
-        assert response == "Completion"
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Completion"
         assert azure_provider.llm.max_tokens == 50
         assert azure_provider.llm.temperature == 0.9
 
@@ -196,7 +202,7 @@ class TestAzureOpenAIProvider:
             AzureOpenAIConfig(api_key="")
 
     def test_chat_success(self, azure_provider, mock_azure_chat_openai):
-        """Test successful chat completion."""
+        """Test successful chat completion returns raw AIMessage."""
         mock_response = AIMessage(content="Test response")
         azure_provider.llm.invoke.return_value = mock_response
 
@@ -207,7 +213,9 @@ class TestAzureOpenAIProvider:
 
         response = azure_provider.chat(messages)
 
-        assert response == "Test response"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         azure_provider.llm.invoke.assert_called_once()
 
     def test_chat_rate_limit(

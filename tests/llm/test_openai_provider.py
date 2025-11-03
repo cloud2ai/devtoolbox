@@ -54,13 +54,13 @@ class TestOpenAIConfig:
         monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
         monkeypatch.setenv('OPENAI_MODEL', 'gpt-4')
         monkeypatch.setenv('OPENAI_TEMPERATURE', '0.5')
-        
+
         config = OpenAIConfig()
-        
+
         assert config.api_key == 'test-key'
         assert config.model == 'gpt-4'
         assert config.temperature == 0.5
-        assert config.max_tokens == 2000  # default value
+        assert config.max_tokens == 8000  # default value
 
     def test_config_validation_error(self):
         """Test validation error when API key is missing"""
@@ -84,9 +84,9 @@ class TestOpenAIProvider:
             {"role": "assistant", "content": "Hi"},
             {"role": "unknown", "content": "Test"}
         ]
-        
+
         converted = openai_provider._convert_messages(messages)
-        
+
         assert len(converted) == 4
         assert isinstance(converted[0], SystemMessage)
         assert isinstance(converted[1], HumanMessage)
@@ -94,7 +94,7 @@ class TestOpenAIProvider:
         assert isinstance(converted[3], HumanMessage)  # unknown roles default to HumanMessage
 
     def test_chat_with_parameters(self, openai_provider, mock_chat_openai):
-        """Test chat with custom parameters"""
+        """Test chat with custom parameters returns raw AIMessage"""
         mock_response = AIMessage(content="Test response")
         openai_provider.llm.invoke.return_value = mock_response
 
@@ -105,7 +105,9 @@ class TestOpenAIProvider:
             temperature=0.8
         )
 
-        assert response == "Test response"
+        # Provider now returns raw AIMessage object (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         assert openai_provider.llm.max_tokens == 100
         assert openai_provider.llm.temperature == 0.8
 
@@ -113,7 +115,7 @@ class TestOpenAIProvider:
         """Test chat rate limit with retry mechanism"""
         error = OpenAIRateLimitError("rate_limit exceeded")
         success_response = AIMessage(content="Success")
-        
+
         openai_provider.llm.invoke.side_effect = [
             error,
             success_response
@@ -121,8 +123,10 @@ class TestOpenAIProvider:
 
         messages = [{"role": "user", "content": "Hello"}]
         response = openai_provider.chat(messages)
-        
-        assert response == "Success"
+
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Success"
         assert openai_provider.llm.invoke.call_count == 2
 
     def test_embed_with_langchain(self, openai_provider, mock_chat_openai):
@@ -130,11 +134,11 @@ class TestOpenAIProvider:
         mock_embedding = [0.1, 0.2, 0.3]
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=mock_embedding)]
-        
+
         openai_provider.llm.client.embeddings.create.return_value = mock_response
-        
+
         result = openai_provider.embed("Test text")
-        
+
         assert result == mock_embedding
         openai_provider.llm.client.embeddings.create.assert_called_once_with(
             model="text-embedding-ada-002",
@@ -142,7 +146,7 @@ class TestOpenAIProvider:
         )
 
     def test_complete_converts_to_chat(self, openai_provider, mock_chat_openai):
-        """Test complete method converts to chat format"""
+        """Test complete method converts to chat format and returns raw AIMessage"""
         mock_response = AIMessage(content="Completion")
         openai_provider.llm.invoke.return_value = mock_response
 
@@ -152,7 +156,9 @@ class TestOpenAIProvider:
             temperature=0.9
         )
 
-        assert response == "Completion"
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Completion"
         assert openai_provider.llm.max_tokens == 50
         assert openai_provider.llm.temperature == 0.9
 
@@ -177,7 +183,7 @@ class TestOpenAIProvider:
             OpenAIConfig(api_key="")
 
     def test_chat_success(self, openai_provider, mock_chat_openai):
-        """Test successful chat completion."""
+        """Test successful chat completion returns raw AIMessage."""
         mock_response = AIMessage(content="Test response")
         openai_provider.llm.invoke.return_value = mock_response
 
@@ -188,7 +194,9 @@ class TestOpenAIProvider:
 
         response = openai_provider.chat(messages)
 
-        assert response == "Test response"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         openai_provider.llm.invoke.assert_called_once()
 
     def test_chat_rate_limit(
@@ -226,13 +234,15 @@ class TestOpenAIProvider:
             openai_provider.chat(messages)
 
     def test_complete_success(self, openai_provider, mock_chat_openai):
-        """Test successful text completion."""
+        """Test successful text completion returns raw AIMessage."""
         mock_response = AIMessage(content="Test completion")
         openai_provider.llm.invoke.return_value = mock_response
 
         response = openai_provider.complete("Test prompt")
 
-        assert response == "Test completion"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test completion"
         openai_provider.llm.invoke.assert_called_once()
 
     def test_embed_success(self, openai_provider, mock_chat_openai):

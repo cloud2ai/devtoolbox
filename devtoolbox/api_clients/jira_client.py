@@ -365,6 +365,32 @@ class JiraClient:
         """Get all versions for a project."""
         return self.client.project_versions(project_key)
 
+    def get_project_components(self, project_key: str) -> List[Dict]:
+        """Get all components for a project.
+
+        Args:
+            project_key: The project key (e.g., 'PROJ')
+
+        Returns:
+            List of component dictionaries containing component details
+        """
+        try:
+            project = self.client.project(project_key)
+            components = []
+            for comp in project.components:
+                components.append({
+                    'name': comp.name,
+                    'description': comp.description or '',
+                    'lead': comp.lead.displayName if comp.lead else None,
+                    'assignee_type': comp.assigneeType,
+                    'is_assignee_type_valid': comp.isAssigneeTypeValid
+                })
+            return components
+        except Exception as e:
+            logging.error(f"Error fetching components for project "
+                         f"{project_key}: {str(e)}")
+            raise
+
     def _get_sprint_field(self) -> Optional[str]:
         """Get the sprint field ID."""
         fields = self.client.fields()

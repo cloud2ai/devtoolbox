@@ -5,7 +5,7 @@ This module provides the service layer for OCR operations.
 
 import logging
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Any
 
 from devtoolbox.ocr.provider import BaseOCRConfig
 
@@ -81,107 +81,15 @@ class OCRService:
         }
         return file_path.suffix.lower() in document_extensions
 
-    def _recognize_image(
-        self,
-        image_path: Union[str, Path],
-        skip_invalid: bool = False,
-        **kwargs
-    ) -> List[str]:
-        """
-        Recognize text from an image file using the configured provider.
-
-        Args:
-            image_path: Path to the image file
-            skip_invalid: Whether to skip invalid files instead of raising errors
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            List of text lines
-        """
-        image_path = Path(image_path)
-
-        # Validate that the file is actually an image
-        if not self._is_image_file(image_path):
-            error_msg = f"File {image_path} is not recognized as an image"
-            if skip_invalid:
-                logger.warning(error_msg)
-                return []
-            else:
-                raise ValueError(error_msg)
-
-        # Validate image compliance using provider
-        is_compliant, reason = self.provider.validate_image_compliance(
-            image_path
-        )
-
-        if not is_compliant:
-            if skip_invalid:
-                logger.warning(
-                    f"Image does not meet {self.provider.__class__.__name__} "
-                    f"requirements: {reason}"
-                )
-                return []
-            else:
-                raise ValueError(f"Image validation failed: {reason}")
-
-        # Perform recognition
-        return self.provider.recognize_image_raw(image_path, **kwargs)
-
-    def _recognize_document(
-        self,
-        document_path: Union[str, Path],
-        skip_invalid: bool = False,
-        **kwargs
-    ) -> List[str]:
-        """
-        Recognize text from a document file using the configured provider.
-
-        Args:
-            document_path: Path to the document file
-            skip_invalid: Whether to skip invalid files instead of raising errors
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            List of text lines
-        """
-        document_path = Path(document_path)
-
-        # Validate that the file is actually a document
-        if not self._is_document_file(document_path):
-            error_msg = f"File {document_path} is not recognized as a document"
-            if skip_invalid:
-                logger.warning(error_msg)
-                return []
-            else:
-                raise ValueError(error_msg)
-
-        # Validate document compliance using provider
-        is_compliant, reason = self.provider.validate_document_compliance(
-            document_path
-        )
-
-        if not is_compliant:
-            if skip_invalid:
-                logger.warning(
-                    f"Document does not meet {self.provider.__class__.__name__} "
-                    f"requirements: {reason}"
-                )
-                return []
-            else:
-                raise ValueError(f"Document validation failed: {reason}")
-
-        # Perform recognition
-        return self.provider.recognize_document_raw(
-            document_path, **kwargs)
-
     def recognize(
         self,
         file_path: Union[str, Path],
         skip_invalid: bool = False,
+        raw_response: bool = False,
         **kwargs
-    ) -> List[str]:
+    ) -> Union[List[str], Any]:
         """
-        Recognize text from a file, automatically determining the file type.
+        Recognize text from a file.
 
         This method automatically detects whether the file is an image or
         document and calls the appropriate recognition method.
@@ -189,27 +97,85 @@ class OCRService:
         Args:
             file_path: Path to the file
             skip_invalid: Whether to skip invalid files instead of raising errors
+            raw_response: If True, returns raw provider response.
+                         If False (default), returns list of strings only.
             **kwargs: Additional provider-specific parameters
 
         Returns:
-            List of text lines
+            List[str]: List of text lines (if raw_response=False)
+            Any: Raw provider response (if raw_response=True)
+                 For Azure: contains pages with lines, metadata, etc.
 
         Raises:
             ValueError: If file type is not supported or validation fails
+
+        Example:
+            # Simple usage - returns list of strings (default)
+            lines = service.recognize(image_path)
+            for line in lines:
+                print(line)
+
+            # With raw response - returns provider's original response
+            result = service.recognize(image_path, raw_response=True)
+            # Access provider-specific structure (e.g., Azure Document Intelligence)
+            for page in result.pages:
+                for line in page.lines:
+                    print(line.content)
         """
         file_path = Path(file_path)
 
-        # Determine file type and call appropriate method
         if self._is_image_file(file_path):
-            return self._recognize_image(
-                file_path, skip_invalid=skip_invalid, **kwargs)
+            if not raw_response:
+                is_compliant, reason = (
+                    self.provider.validate_image_compliance(
+                        file_path
+                    )
+                )
+                if not is_compliant:
+                    error_msg = (
+                        f"Image validation failed: {reason}"
+                    )
+                    if skip_invalid:
+                        logger.warning(error_msg)
+                        return []
+                    else:
+                        raise ValueError(error_msg)
+
+            return self.provider.recognize_image_raw(
+                file_path,
+                return_raw=raw_response,
+                **kwargs
+            )
+
         elif self._is_document_file(file_path):
-            return self._recognize_document(
-                file_path, skip_invalid=skip_invalid, **kwargs)
+            if not raw_response:
+                is_compliant, reason = (
+                    self.provider.validate_document_compliance(
+                        file_path
+                    )
+                )
+                if not is_compliant:
+                    error_msg = (
+                        f"Document validation failed: {reason}"
+                    )
+                    if skip_invalid:
+                        logger.warning(error_msg)
+                        return []
+                    else:
+                        raise ValueError(error_msg)
+
+            return self.provider.recognize_document_raw(
+                file_path,
+                return_raw=raw_response,
+                **kwargs
+            )
+
         else:
-            error_msg = f"Unsupported file type: {file_path.suffix}"
+            error_msg = (
+                f"Unsupported file type: {file_path.suffix}"
+            )
             if skip_invalid:
                 logger.warning(error_msg)
-                return []
+                return [] if not raw_response else None
             else:
                 raise ValueError(error_msg)

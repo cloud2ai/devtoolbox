@@ -8,7 +8,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +84,22 @@ class BaseOCRProvider(ABC):
     def recognize_image_raw(
         self,
         image_path: Union[str, Path],
+        return_raw: bool = False,
         **kwargs
-    ) -> List[str]:
+    ) -> Union[List[str], Any]:
         """
-        Analyze an image and extract text
+        Analyze an image and return text or raw response.
 
         Args:
             image_path: Path to the image file
+            return_raw: If True, returns raw provider response.
+                       If False, returns list of text lines.
             **kwargs: Additional provider-specific parameters
 
         Returns:
-            List of text lines
+            List[str]: List of text lines (if return_raw=False)
+            Any: Raw provider response (if return_raw=True)
+                 Provider-specific object with full metadata
         """
         pass
 
@@ -102,16 +107,21 @@ class BaseOCRProvider(ABC):
     def recognize_document_raw(
         self,
         document_path: Union[str, Path],
+        return_raw: bool = False,
         **kwargs
-    ) -> List[str]:
+    ) -> Union[List[str], Any]:
         """
-        Analyze a document and extract text
+        Analyze a document and return text or raw response.
 
         Args:
             document_path: Path to the document file
+            return_raw: If True, returns raw provider response.
+                       If False, returns list of text lines.
             **kwargs: Additional provider-specific parameters
 
         Returns:
-            List of text lines
+            List[str]: List of text lines (if return_raw=False)
+            Any: Raw provider response (if return_raw=True)
+                 Provider-specific object with full metadata
         """
         pass

@@ -53,9 +53,9 @@ class TestDeepSeekConfig:
         monkeypatch.setenv('DEEPSEEK_API_KEY', 'test-key')
         monkeypatch.setenv('DEEPSEEK_MODEL', 'deepseek-chat')
         monkeypatch.setenv('DEEPSEEK_TEMPERATURE', '0.5')
-        
+
         config = DeepSeekConfig()
-        
+
         assert config.api_key == 'test-key'
         assert config.model == 'deepseek-chat'
         assert config.temperature == 0.5
@@ -83,9 +83,9 @@ class TestDeepSeekProvider:
             {"role": "assistant", "content": "Hi"},
             {"role": "unknown", "content": "Test"}
         ]
-        
+
         converted = deepseek_provider._convert_messages(messages)
-        
+
         assert len(converted) == 4
         assert isinstance(converted[0], SystemMessage)
         assert isinstance(converted[1], HumanMessage)
@@ -106,7 +106,9 @@ class TestDeepSeekProvider:
             temperature=0.8
         )
 
-        assert response == "Test response"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         assert deepseek_provider.llm.max_tokens == 100
         assert deepseek_provider.llm.temperature == 0.8
 
@@ -116,7 +118,7 @@ class TestDeepSeekProvider:
         """Test chat rate limit with retry mechanism"""
         error = OpenAIRateLimitError("rate_limit exceeded")
         success_response = AIMessage(content="Success")
-        
+
         deepseek_provider.llm.invoke.side_effect = [
             error,
             success_response
@@ -124,8 +126,10 @@ class TestDeepSeekProvider:
 
         messages = [{"role": "user", "content": "Hello"}]
         response = deepseek_provider.chat(messages)
-        
-        assert response == "Success"
+
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Success"
         assert deepseek_provider.llm.invoke.call_count == 2
 
     def test_complete_converts_to_chat(
@@ -141,7 +145,9 @@ class TestDeepSeekProvider:
             temperature=0.9
         )
 
-        assert response == "Completion"
+        # Provider returns raw AIMessage
+        assert isinstance(response, AIMessage)
+        assert response.content == "Completion"
         assert deepseek_provider.llm.max_tokens == 50
         assert deepseek_provider.llm.temperature == 0.9
 
@@ -176,7 +182,9 @@ class TestDeepSeekProvider:
 
         response = deepseek_provider.chat(messages)
 
-        assert response == "Test response"
+        # Provider returns raw AIMessage (transparent pass-through)
+        assert isinstance(response, AIMessage)
+        assert response.content == "Test response"
         deepseek_provider.llm.invoke.assert_called_once()
 
     def test_chat_rate_limit(

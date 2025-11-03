@@ -224,7 +224,7 @@ class AzureOpenAIProvider(OpenAIProvider):
             **kwargs: Additional keyword arguments
 
         Returns:
-            str: Model's response text
+            str: Model's response text with full metadata
 
         Raises:
             OpenAIRateLimitError: If rate limit is exceeded
@@ -240,9 +240,9 @@ class AzureOpenAIProvider(OpenAIProvider):
             if temperature is not None:
                 self.llm.temperature = temperature
 
-            # Get response from LangChain
+            # Get response from LangChain and return directly
             response = self.llm.invoke(langchain_messages)
-            return response.content.strip()
+            return response
 
         except Exception as e:
             if "rate_limit" in str(e).lower():

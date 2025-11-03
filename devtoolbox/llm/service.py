@@ -5,7 +5,7 @@ interface for LLM operations with advanced features like context
 management and fallback handling.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 import logging
 import importlib
 from langchain.prompts import PromptTemplate
@@ -37,7 +37,8 @@ class LLMService:
     """
 
     def __init__(self, config: Any):
-        """Initialize LLM service.
+        """
+        Initialize LLM service.
 
         Args:
             config: Provider configuration instance.
@@ -89,28 +90,53 @@ class LLMService:
         messages: List[Dict[str, str]],
         max_tokens: int = None,
         temperature: float = None,
+        raw_response: bool = False,
         **kwargs
-    ) -> str:
-        """Chat with LLM.
+    ) -> Union[str, Any]:
+        """
+        Chat with LLM.
 
         Args:
             messages: Chat messages
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            raw_response: If True, returns raw provider response with metadata.
+                         If False (default), returns string only.
             **kwargs: Additional arguments for the chat
 
         Returns:
-            str: Chat response
+            str: Chat response content (if raw_response=False)
+            Any: Raw provider response object (if raw_response=True)
+                 For OpenAI/Azure: returns AIMessage from LangChain
+                 Contains: content, usage_metadata, response_metadata, etc.
 
         Raises:
             Exception: If chat fails
+
+        Example:
+            # Simple usage - returns string (default)
+            response = service.chat(messages)
+            print(response)
+
+            # With raw response - returns original provider response
+            response = service.chat(messages, raw_response=True)
+            print(response.content)  # Access content
+            print(response.usage_metadata)  # Access usage info
+            print(response.response_metadata)  # Access metadata
         """
-        return self.provider.chat(
+        response = self.provider.chat(
             messages,
             max_tokens=max_tokens,
             temperature=temperature,
             **kwargs
         )
+
+        if raw_response:
+            return response
+
+        if hasattr(response, 'content'):
+            return response.content.strip()
+        return str(response)
 
     def chat_with_context(
         self,
@@ -187,28 +213,50 @@ class LLMService:
         prompt: str,
         max_tokens: int = None,
         temperature: float = None,
+        raw_response: bool = False,
         **kwargs
-    ) -> str:
-        """Generate text completion.
+    ) -> Union[str, Any]:
+        """
+        Generate text completion.
 
         Args:
             prompt: The prompt to complete
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            raw_response: If True, returns raw provider response with metadata.
+                         If False (default), returns string only.
             **kwargs: Additional arguments for the completion
 
         Returns:
-            str: The completed text
+            str: The completed text (if raw_response=False)
+            Any: Raw provider response object (if raw_response=True)
 
         Raises:
             Exception: If completion fails
+
+        Example:
+            # Simple usage - returns string (default)
+            response = service.complete(prompt)
+            print(response)
+
+            # With raw response - returns original provider response
+            response = service.complete(prompt, raw_response=True)
+            print(response.content)  # Access content
+            print(response.usage_metadata)  # Access usage info
         """
-        return self.provider.complete(
+        response = self.provider.complete(
             prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             **kwargs
         )
+
+        if raw_response:
+            return response
+
+        if hasattr(response, 'content'):
+            return response.content.strip()
+        return str(response)
 
     def embed(self, text: str, **kwargs) -> List[float]:
         """Generate embeddings.

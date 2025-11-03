@@ -151,17 +151,21 @@ class AzureOCRProvider(BaseOCRProvider):
     def recognize_image_raw(
         self,
         image_path: Union[str, Path],
+        return_raw: bool = False,
         **kwargs
-    ) -> List[str]:
+    ) -> Union[List[str], Any]:
         """
-        Analyze an image and extract text using Azure Document Intelligence
+        Analyze an image and return text or raw response.
 
         Args:
             image_path: Path to the image file
+            return_raw: If True, returns raw Azure AnalyzeResult.
+                       If False, returns list of text lines.
             **kwargs: Additional parameters for Azure Document Intelligence
 
         Returns:
-            List of recognized text lines
+            List[str]: Text lines (if return_raw=False)
+            AnalyzeResult: Raw Azure response (if return_raw=True)
 
         Raises:
             AzureOCRProcessingException: If processing fails
@@ -191,6 +195,10 @@ class AzureOCRProvider(BaseOCRProvider):
             try:
                 result = poller.result()
                 logger.info("Image analysis completed successfully")
+
+                # Provider controls format based on return_raw
+                if return_raw:
+                    return result
                 return self._convert_to_text(result)
             except HttpResponseError as e:
                 # Handle specific error types
@@ -277,17 +285,21 @@ class AzureOCRProvider(BaseOCRProvider):
     def recognize_document_raw(
         self,
         document_path: Union[str, Path],
+        return_raw: bool = False,
         **kwargs
-    ) -> List[str]:
+    ) -> Union[List[str], Any]:
         """
-        Analyze a document and extract text using Azure Document Intelligence
+        Analyze a document and return text or raw response.
 
         Args:
             document_path: Path to the document file
+            return_raw: If True, returns raw Azure AnalyzeResult.
+                       If False, returns list of text lines.
             **kwargs: Additional parameters for Azure Document Intelligence
 
         Returns:
-            List of recognized text lines
+            List[str]: Text lines (if return_raw=False)
+            AnalyzeResult: Raw Azure response (if return_raw=True)
 
         Raises:
             AzureOCRProcessingException: If processing fails
@@ -317,6 +329,10 @@ class AzureOCRProvider(BaseOCRProvider):
             try:
                 result = poller.result()
                 logger.info("Document analysis completed successfully")
+
+                # Provider controls format based on return_raw
+                if return_raw:
+                    return result
                 return self._convert_to_text(result)
             except HttpResponseError as e:
                 # Handle specific error types
