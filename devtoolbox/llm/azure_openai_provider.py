@@ -95,47 +95,27 @@ class AzureOpenAIConfig(OpenAIConfig):
 
     def _log_config_loading(self):
         """Log configuration loading process."""
-        if self.api_key:
-            logger.info("Azure OpenAI API key loaded from constructor")
-        elif os.environ.get('AZURE_OPENAI_API_KEY'):
-            logger.info(
-                "Azure OpenAI API key loaded from environment variable"
-            )
-        else:
+        if not self.api_key and not os.environ.get('AZURE_OPENAI_API_KEY'):
             logger.error(
                 "Azure OpenAI API key not found in constructor or environment"
             )
 
-        if self.api_base:
-            logger.info("Azure OpenAI API base loaded from constructor")
-        elif os.environ.get('AZURE_OPENAI_API_BASE'):
-            logger.info(
-                "Azure OpenAI API base loaded from environment variable"
-            )
-        else:
+        if not self.api_base and not os.environ.get('AZURE_OPENAI_API_BASE'):
             logger.error(
                 "Azure OpenAI API base not found in constructor or environment"
             )
 
-        if self.deployment:
-            logger.info("Azure OpenAI deployment loaded from constructor")
-        elif os.environ.get('AZURE_OPENAI_DEPLOYMENT'):
-            logger.info(
-                "Azure OpenAI deployment loaded from environment variable"
-            )
-        else:
+        deployment_key = 'AZURE_OPENAI_DEPLOYMENT'
+        if not self.deployment and not os.environ.get(deployment_key):
             logger.error(
                 "Azure OpenAI deployment not found in constructor or "
                 "environment"
             )
 
-        logger.info(f"API Version: {self.api_version}")
-        logger.info(f"Model: {self.model}")
-        logger.info(f"Temperature: {self.temperature}")
-        logger.info(f"Max tokens: {self.max_tokens}")
-        logger.info(f"Top P: {self.top_p}")
-        logger.info(f"Frequency penalty: {self.frequency_penalty}")
-        logger.info(f"Presence penalty: {self.presence_penalty}")
+        logger.debug(
+            f"Azure OpenAI initialized: deployment={self.deployment}, "
+            f"model={self.model}, api_version={self.api_version}"
+        )
 
     def _validate_config(self):
         """Validate Azure OpenAI configuration."""

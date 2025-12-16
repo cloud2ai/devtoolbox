@@ -80,28 +80,15 @@ class OpenAIConfig(BaseLLMConfig):
 
     def _log_config_loading(self):
         """Log configuration loading process."""
-        if self.api_key:
-            logger.info("OpenAI API key loaded from constructor")
-        elif os.environ.get('OPENAI_API_KEY'):
-            logger.info("OpenAI API key loaded from environment variable")
-        else:
+        if not self.api_key and not os.environ.get('OPENAI_API_KEY'):
             logger.error(
                 "OpenAI API key not found in constructor or environment"
             )
 
-        if self.api_base:
-            logger.info("OpenAI API base loaded from constructor")
-        elif os.environ.get('OPENAI_API_BASE'):
-            logger.info("OpenAI API base loaded from environment variable")
-        else:
-            logger.info("OpenAI API base not set, using default")
-
-        logger.info(f"Model: {self.model}")
-        logger.info(f"Temperature: {self.temperature}")
-        logger.info(f"Max tokens: {self.max_tokens}")
-        logger.info(f"Top P: {self.top_p}")
-        logger.info(f"Frequency penalty: {self.frequency_penalty}")
-        logger.info(f"Presence penalty: {self.presence_penalty}")
+        logger.debug(
+            f"OpenAI initialized: model={self.model}, "
+            f"temperature={self.temperature}"
+        )
 
     def _validate_config(self):
         """Validate OpenAI configuration."""
@@ -144,7 +131,10 @@ class OpenAIProvider(BaseLLMProvider):
 
     def __init__(self, config: OpenAIConfig):
         """Initialize OpenAI provider with LangChain."""
-        logger.info(f"Initializing OpenAI provider with config: {config}")
+        logger.debug(
+            f"Initializing OpenAI provider: model={config.model}, "
+            f"temperature={config.temperature}"
+        )
         super().__init__(config)
         self.config = config
         if not config.api_key:
@@ -266,17 +256,10 @@ class OpenAIProvider(BaseLLMProvider):
         Raises:
             OpenAIError: If completion fails
         """
-        logger.info("Starting text completion")
-        logger.debug(f"Input prompt: {prompt}")
-        logger.debug(
-            f"Parameters - max_tokens: {max_tokens}, "
-            f"temperature: {temperature}"
-        )
-        logger.debug(f"Additional kwargs: {kwargs}")
+        logger.debug(f"Text completion: {len(prompt)} chars")
 
         messages = [{"role": "user", "content": prompt}]
         try:
-            logger.info("Converting prompt to chat format")
             response = self.chat(
                 messages,
                 max_tokens=max_tokens,
@@ -284,8 +267,7 @@ class OpenAIProvider(BaseLLMProvider):
                 *args,
                 **kwargs
             )
-            logger.debug(f"Received response: {response}")
-            logger.info("Text completion completed successfully")
+            logger.debug(f"Response: {len(response)} chars")
             return response
         except Exception as e:
             logger.error(f"Text completion failed: {str(e)}")

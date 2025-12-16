@@ -190,7 +190,13 @@ class ImageDownloader:
 
         filter_images_hashes = []
         for future in as_completed(futures):
-            result = future.result()
+            try:
+                result = future.result()
+            except Exception as e:
+                logging.warning(
+                    f"Image download task failed: {e}, skipping this image"
+                )
+                continue
 
             # Skip to empty image
             if not result["content"]:
@@ -354,11 +360,17 @@ class ImageDownloader:
         # NOTE(Ray): If search images is enabled, added search images into
         # download image list
         all_images = list(self.images)
+        original_count = len(all_images)
+
         if self.enable_search_download:
             search_engine = DuckDuckGoImageSearch(
                 self.search_keywords, max_results=MAX_DOWNLOAD_IMAGE_NUM)
             search_images = search_engine.search_image_urls()
             all_images.extend(search_images)
+            logging.info(
+                f"Image sources: {original_count} from article + "
+                f"{len(search_images)} from search = {len(all_images)} total"
+            )
 
         logging.info(f"Trying to filter ({len(all_images)}) images")
         logging.debug(f"All Images: {all_images}")
@@ -381,13 +393,13 @@ class ImageDownloader:
 
             image_url = collect_image["image_url"]
             save_content = collect_image["content"]
-            logging.info("Downloading image from %s to %s" % (
+            logging.debug("Downloading image from %s to %s" % (
                 image_url, image_full_path))
 
             if self.storage.exists(image_full_path) and self.use_cache:
-                logging.info("Image already exists in %s" % image_full_path)
+                logging.debug("Image already exists in %s" % image_full_path)
             else:
-                logging.info("Writing image to path %s" % image_full_path)
+                logging.debug("Writing image to path %s" % image_full_path)
 
                 image_converter = ImageConverter(save_content)
                 try:
@@ -400,14 +412,15 @@ class ImageDownloader:
                             image_full_path
                         )
                         # Output compressed image information
-                        logging.info(
+                        logging.debug(
                             "Compressed image size: %.2f MB" % (
                                 len(save_content) / (1024 * 1024)
                             )
                         )
                 except Exception as e:
-                    logging.warn(f"Ignore to save image "
-                               f"{image_url} due to: {e}")
+                    logging.warn(
+                        f"Ignore to save image {image_url} due to: {e}"
+                    )
                     continue
 
                 self.storage.write(

@@ -187,7 +187,7 @@ class ImageConverter:
             bytes: Compressed image data.
         """
         # Log original image information
-        logging.info(
+        logging.debug(
             "Starting image compression. Mode: %s, Size: %s, Format: %s" % (
                 image_obj.mode,
                 image_obj.size,
@@ -214,15 +214,15 @@ class ImageConverter:
         compressed_data = output.getvalue()
 
         # Log compression results
-        logging.info("Image compressed to %d bytes" % len(compressed_data))
-        logging.info(
+        logging.debug("Image compressed to %d bytes" % len(compressed_data))
+        logging.debug(
             "Compressed image size: %.2f MB" % (
                 len(compressed_data) / (1024 * 1024)
             )
         )
 
         if output_path:
-            logging.info(
+            logging.debug(
                 "Writing content type image to storage: %s..." % output_path
             )
             with open(output_path, 'wb') as f:
@@ -250,7 +250,7 @@ class ImageConverter:
         # Load image if not already loaded
         if self.image_obj is None:
             if self.source_type == "file":
-                logger.info(f"Loading image from file: {self.source}")
+                logger.debug(f"Loading image from file: {self.source}")
                 self.image_obj = Image.open(self.source)
                 logger.debug(
                     f"Image loaded. Mode: {self.image_obj.mode}, "
@@ -262,13 +262,13 @@ class ImageConverter:
 
         # Log original dimensions
         orig_width, orig_height = self.image_obj.size
-        logger.info(
+        logger.debug(
             f"Original image dimensions: {orig_width}x{orig_height} pixels"
         )
 
         # If no dimensions provided, return original image
         if width is None and height is None:
-            logger.info("No dimensions provided, returning original image")
+            logger.debug("No dimensions provided, returning original image")
             if self.source_type == "bytes":
                 output = BytesIO()
                 self.image_obj.save(output, format=self.output_format)
@@ -283,7 +283,7 @@ class ImageConverter:
                 ratio = width / orig_width
                 new_width = width
                 new_height = int(orig_height * ratio)
-                logger.info(
+                logger.debug(
                     f"Resizing image to {new_width}x{new_height} pixels"
                 )
                 resized_image = self.image_obj.resize(
@@ -297,7 +297,7 @@ class ImageConverter:
                 )
         else:
             # Keep original size if image is smaller than target
-            logger.info("Image is smaller than target width, keeping original size")
+            logger.debug("Image is smaller than target width, keeping original size")
             resized_image = self.image_obj
 
         # Handle RGBA images
@@ -335,10 +335,10 @@ class ImageConverter:
             output_path = os.path.join(
                 file_dir, f"{file_name}_resized.{self.output_format}"
             )
-            logger.info(f"Saving image to: {output_path}")
+            logger.debug(f"Saving image to: {output_path}")
 
             processed_image.save(output_path)
-            logger.info(
+            logger.debug(
                 f"Image saved successfully. "
                 f"Size: {os.path.getsize(output_path)} bytes"
             )

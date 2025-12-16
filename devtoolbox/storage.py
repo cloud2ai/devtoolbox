@@ -638,7 +638,9 @@ class ObjectStorage(BaseStorage):
 
         Example:
             >>> storage = ObjectStorage("my-bucket", endpoint="...", ...)
-            >>> url = storage.get_presigned_download_url("uploads/file.txt", 30)
+            >>> url = storage.get_presigned_download_url(
+            ...     "uploads/file.txt", 30
+            ... )
             >>> print(f"Download URL valid for 30 minutes: {url}")
         """
         logger.info(
@@ -727,7 +729,7 @@ class FileStorage(BaseStorage):
         """Check if file exists in file system."""
         target_path = os.path.join(self.base_path, path)
         exists = os.path.exists(target_path)
-        logger.info(f"Checking if file exists: {target_path} -> {exists}")
+        logger.debug(f"Checking if file exists: {target_path} -> {exists}")
         return exists
 
     def _ensure_path_exists(self, path):
