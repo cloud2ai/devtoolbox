@@ -55,7 +55,8 @@ dependencies = [
 
     # DuckDuckGo search API
     # Used in: devtoolbox/search_engine/duckduckgo.py
-    "duckduckgo-search>=4.1.1",
+    # Temporarily use GitHub repository: https://github.com/xiaoquqi/ddgs
+    "ddgs @ git+https://github.com/xiaoquqi/ddgs.git@main",
 
     # Advanced retry mechanism
     # Used in: devtoolbox/llm/* (LLM providers)

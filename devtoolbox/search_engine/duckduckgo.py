@@ -2,8 +2,8 @@ import logging
 
 from retry import retry
 
-from duckduckgo_search import DDGS
-from duckduckgo_search.exceptions import RatelimitException, TimeoutException
+from ddgs import DDGS
+from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException
 
 # Default number of search results
 MAX_RESULTS = 5
@@ -47,7 +47,7 @@ class DuckDuckGoImageSearch(object):
         self.size = size
         self.max_results = max_results
 
-    @retry((RatelimitException, TimeoutException),
+    @retry((DDGSException, RatelimitException, TimeoutException),
            tries=3, delay=RETRY_DELAY_SECONDS)
     def search_image_urls(self):
         """
@@ -62,13 +62,14 @@ class DuckDuckGoImageSearch(object):
         """
         logging.info(f"Search ({self.max_results}) images "
                      f"with keywords [{self.keywords}]")
-        results = DDGS().images(
-            self.keywords,
-            region=self.region,
-            safesearch=self.safesearch,
-            size=self.size,
-            max_results=self.max_results
-        )
+        with DDGS() as ddgs:
+            results = ddgs.images(
+                query=self.keywords,
+                region=self.region,
+                safesearch=self.safesearch,
+                size=self.size,
+                max_results=self.max_results
+            )
         logging.debug(f"Search images: {results}")
         image_urls = [result["image"] for result in results]
         return image_urls
