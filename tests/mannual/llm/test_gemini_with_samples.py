@@ -4,7 +4,7 @@ Usage:
     python test_gemini_with_samples.py
 
 This script tests Gemini provider with real sample data from
-sample_data/ directory. Requires GOOGLE_API_KEY environment variable.
+sample_data/ directory. Requires GOOGLE_API_KEY or GEMINI_API_KEY.
 """
 
 import os

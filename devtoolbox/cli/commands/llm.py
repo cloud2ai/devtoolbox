@@ -7,6 +7,7 @@ from devtoolbox.llm.service import LLMService
 from devtoolbox.llm.openai_provider import OpenAIConfig
 from devtoolbox.llm.azure_openai_provider import AzureOpenAIConfig
 from devtoolbox.llm.deepseek_provider import DeepSeekConfig
+from devtoolbox.llm.gemini_provider import GeminiConfig
 from devtoolbox.llm.provider import BaseLLMConfig
 from devtoolbox.cli.utils import setup_logging
 
@@ -19,6 +20,7 @@ PROVIDER_CONFIGS: Dict[str, Type[BaseLLMConfig]] = {
     "openai": OpenAIConfig,
     "azure": AzureOpenAIConfig,
     "deepseek": DeepSeekConfig,
+    "gemini": GeminiConfig,
 }
 
 # Default prompt files
@@ -48,7 +50,7 @@ def get_config(provider: str) -> BaseLLMConfig:
     """Get configuration for the specified provider.
 
     Args:
-        provider: Provider name (openai, azure, deepseek)
+        provider: Provider name (openai, azure, deepseek, gemini)
 
     Returns:
         Configuration object for the provider

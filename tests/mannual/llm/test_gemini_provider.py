@@ -4,7 +4,7 @@ Usage:
     python test_gemini_provider.py
 
 This script tests the Gemini provider with real API calls.
-Requires GOOGLE_API_KEY environment variable.
+Requires GOOGLE_API_KEY or GEMINI_API_KEY environment variable.
 """
 
 import os
@@ -105,10 +105,14 @@ def test_embed():
 
 def main():
     """Run all manual tests."""
-    if not os.environ.get("GOOGLE_API_KEY"):
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY") or
+        os.environ.get("GEMINI_API_KEY")
+    )
+    if not api_key:
         logger.error(
-            "GOOGLE_API_KEY environment variable is required. "
-            "Set it before running this test."
+            "GOOGLE_API_KEY or GEMINI_API_KEY environment variable "
+            "is required. Set it before running this test."
         )
         sys.exit(1)
 
