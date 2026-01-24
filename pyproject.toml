@@ -164,6 +164,10 @@ llm = [
     # Used in: devtoolbox/llm/* (LLM providers)
     "langchain-openai>=0.0.5",
 
+    # Google Gemini native SDK
+    # Used in: devtoolbox/llm/gemini_provider.py
+    "google-genai>=1.0.0",
+
     # LangChain core functionality
     # Used in: devtoolbox/llm/* (LLM providers)
     "langchain-core>=0.1.10",
