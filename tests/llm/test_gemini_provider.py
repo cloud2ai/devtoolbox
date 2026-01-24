@@ -64,7 +64,7 @@ class TestGeminiConfig:
         assert config.api_key == 'test-key'
         assert config.model == 'gemini-2.5-pro'
         assert config.temperature == 0.5
-        assert config.max_tokens == 80000
+        assert config.max_tokens == 60000
 
     def test_config_default_model(self):
         """Test default model is gemini-2.5-flash-lite."""

@@ -1,19 +1,21 @@
-"""Google Gemini provider using native SDK (google-genai) only."""
+"""Google Gemini provider implementation using LangChain.
+
+This module provides an implementation of the Google Gemini provider using LangChain.
+"""
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 import os
 
-from google import genai as google_genai
-from google.genai import types as genai_types
-
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
-    before_sleep_log,
+    before_sleep_log
 )
 
 from devtoolbox.llm.provider import (
@@ -29,200 +31,151 @@ logger = logging.getLogger(__name__)
 @register_config('gemini')
 @dataclass
 class GeminiConfig(BaseLLMConfig):
-    """Gemini config; loads from env when not provided."""
+    """Google Gemini configuration settings.
+
+    This class automatically loads configuration from environment variables
+    if not provided during initialization. Required parameters must be set
+    either through constructor or environment variables.
+    """
 
     api_key: str = field(
-        default_factory=lambda: (
-            os.environ.get('GOOGLE_API_KEY') or
-            os.environ.get('GEMINI_API_KEY')
-        ),
+        default_factory=lambda: os.environ.get('GOOGLE_API_KEY')
     )
     model: str = field(
-        default_factory=lambda: os.environ.get(
-            'GEMINI_MODEL',
-            'gemini-2.5-flash-lite',
-        ),
+        default_factory=lambda: os.environ.get('GEMINI_MODEL', 'gemini-pro')
     )
     temperature: float = field(
         default_factory=lambda: float(
-            os.environ.get('GEMINI_TEMPERATURE', '0.7'),
-        ),
+            os.environ.get('GEMINI_TEMPERATURE', '0.7')
+        )
     )
     max_tokens: int = field(
         default_factory=lambda: int(
-            os.environ.get('GEMINI_MAX_TOKENS', '80000'),
-        ),
+            os.environ.get('GEMINI_MAX_TOKENS', '60000')
+        )
     )
     top_p: float = field(
         default_factory=lambda: float(
-            os.environ.get('GEMINI_TOP_P', '1.0'),
-        ),
+            os.environ.get('GEMINI_TOP_P', '1.0')
+        )
     )
     top_k: int = field(
         default_factory=lambda: int(
-            os.environ.get('GEMINI_TOP_K', '40'),
-        ),
+            os.environ.get('GEMINI_TOP_K', '40')
+        )
     )
 
     def __post_init__(self):
-        self._log_config()
-        self._validate()
+        """Validate configuration and log loading process."""
+        self._log_config_loading()
+        self._validate_config()
 
-    def _log_config(self):
-        if not self.api_key and not (
-            os.environ.get('GOOGLE_API_KEY') or
-            os.environ.get('GEMINI_API_KEY')
-        ):
+    def _log_config_loading(self):
+        """Log configuration loading process."""
+        if not self.api_key and not os.environ.get('GOOGLE_API_KEY'):
             logger.error(
-                "Google Gemini API key not found in constructor or "
-                "environment",
+                "Google Gemini API key not found in constructor or environment"
             )
+
         logger.debug(
-            f"Gemini config: model={self.model}, "
-            f"temperature={self.temperature}",
+            f"Google Gemini initialized: model={self.model}, "
+            f"temperature={self.temperature}"
         )
 
-    def _validate(self):
+    def _validate_config(self):
+        """Validate Google Gemini configuration."""
         if not self.api_key:
             raise ValueError(
-                "Google Gemini API key is required. Set via constructor "
-                "or GOOGLE_API_KEY/GEMINI_API_KEY env.",
+                "Google Gemini API key is required. Set it either in constructor "
+                "or through GOOGLE_API_KEY environment variable"
             )
 
     @classmethod
     def from_env(cls) -> 'GeminiConfig':
-        """Backward-compat: create config from env."""
+        """Create Google Gemini configuration from environment variables.
+
+        This method is kept for backward compatibility.
+        """
         logger.warning(
-            "from_env() deprecated; config loads from env.",
+            "from_env() is deprecated. Configuration is now automatically "
+            "loaded during initialization."
         )
         return cls()
 
 
 class GeminiError(Exception):
-    """Gemini API errors."""
+    """Base exception for Google Gemini-related errors."""
     pass
 
 
 class GeminiRateLimitError(GeminiError):
-    """Gemini rate limit exceeded."""
+    """Raised when Google Gemini rate limit is exceeded."""
     pass
-
-
-def _extract_text(resp: Any) -> str:
-    """Get text from generate_content response."""
-    if hasattr(resp, "text"):
-        return resp.text or ""
-    if hasattr(resp, "candidates") and resp.candidates:
-        c = resp.candidates[0]
-        if hasattr(c, "content") and c.content and c.content.parts:
-            return c.content.parts[0].text or ""
-    return str(resp)
 
 
 @register_provider('GeminiProvider')
 class GeminiProvider(BaseLLMProvider):
-    """Gemini provider via google-genai only."""
+    """Google Gemini provider implementation using LangChain.
+
+    This implementation uses LangChain's ChatGoogleGenerativeAI class which
+    provides integration with Google's Gemini models.
+    """
 
     def __init__(self, config: GeminiConfig):
+        """Initialize Google Gemini provider with LangChain."""
         logger.debug(
-            f"Gemini provider: model={config.model}, "
-            f"temperature={config.temperature}",
+            f"Initializing Google Gemini provider: model={config.model}, "
+            f"temperature={config.temperature}"
         )
         super().__init__(config)
         self.config = config
-        self._client = google_genai.Client(api_key=config.api_key)
-
-    def _to_contents(
-        self,
-        messages: List[Dict[str, str]],
-    ) -> Union[str, List[Any]]:
-        """Convert messages to SDK contents (str or list of Content)."""
-        if not messages:
-            return ""
-        if len(messages) == 1 and messages[0].get("role") == "user":
-            return messages[0].get("content", "")
-
-        out = []
-        for m in messages:
-            role = "model" if m.get("role") == "assistant" else "user"
-            text = m.get("content", "")
-            if m.get("role") not in ("user", "assistant", "system"):
-                logger.warning(
-                    f"Unknown role {m.get('role')}, treating as user",
-                )
-            out.append(
-                genai_types.Content(
-                    role=role,
-                    parts=[genai_types.Part.from_text(text=text)],
-                ),
+        if not config.api_key:
+            config.api_key = os.environ.get('GOOGLE_API_KEY')
+        if not config.api_key:
+            raise ValueError(
+                "Google Gemini API key is required. Set it either in constructor "
+                "or through GOOGLE_API_KEY environment variable"
             )
-        return out
 
-    def _config(
-        self,
-        max_tokens: Optional[int],
-        temperature: Optional[float],
-        json_mode: bool,
-        response_schema: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Build generate_content config dict."""
-        cfg: Dict[str, Any] = {}
-        t = (
-            temperature
-            if temperature is not None
-            else self.config.temperature
+        # Initialize LangChain ChatGoogleGenerativeAI client
+        self.llm = ChatGoogleGenerativeAI(
+            model=config.model,
+            temperature=config.temperature,
+            max_output_tokens=config.max_tokens,
+            google_api_key=config.api_key,
+            top_p=config.top_p,
+            top_k=config.top_k
         )
-        if t is not None:
-            cfg["temperature"] = t
-        n = (
-            max_tokens
-            if max_tokens is not None
-            else self.config.max_tokens
-        )
-        if n is not None:
-            cfg["max_output_tokens"] = n
-        if self.config.top_p is not None:
-            cfg["top_p"] = self.config.top_p
-        if self.config.top_k is not None:
-            cfg["top_k"] = self.config.top_k
-        if json_mode or response_schema is not None:
-            cfg["response_mime_type"] = "application/json"
-            if response_schema is not None:
-                if not isinstance(response_schema, dict):
-                    raise TypeError(
-                        "response_schema must be a dict (JSON Schema).",
-                    )
-                cfg["response_schema"] = response_schema
-        return cfg
 
-    def _generate(
-        self,
-        messages: List[Dict[str, str]],
-        max_tokens: Optional[int],
-        temperature: Optional[float],
-        json_mode: bool = False,
-        response_schema: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Call Gemini generate_content and return text."""
-        contents = self._to_contents(messages)
-        cfg = self._config(
-            max_tokens,
-            temperature,
-            json_mode,
-            response_schema,
-        )
-        resp = self._client.models.generate_content(
-            model=self.config.model,
-            contents=contents,
-            config=cfg,
-        )
-        return _extract_text(resp)
+    def _convert_messages(self, messages: List[Dict[str, str]]) -> List[Any]:
+        """Convert message dictionaries to LangChain message objects.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+
+        Returns:
+            List of LangChain message objects
+        """
+        converted_messages = []
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "user":
+                converted_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                converted_messages.append(AIMessage(content=content))
+            elif role == "system":
+                converted_messages.append(SystemMessage(content=content))
+            else:
+                logger.warning(f"Unknown message role: {role}")
+                converted_messages.append(HumanMessage(content=content))
+        return converted_messages
 
     @retry(
         retry=retry_if_exception_type(GeminiRateLimitError),
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=4, max=30),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=before_sleep_log(logger, logging.WARNING)
     )
     def chat(
         self,
@@ -232,24 +185,46 @@ class GeminiProvider(BaseLLMProvider):
         *args,
         **kwargs
     ) -> str:
-        """Chat with Gemini. kwargs: json_mode, response_schema."""
-        json_mode = kwargs.pop("json_mode", False)
-        response_schema = kwargs.pop("response_schema", None)
+        """Chat with Google Gemini API using LangChain.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            str: Model's response text with full metadata
+
+        Raises:
+            GeminiRateLimitError: If rate limit is exceeded
+            GeminiError: If any other error occurs
+        """
         try:
-            return self._generate(
-                messages,
-                max_tokens,
-                temperature,
-                json_mode=json_mode,
-                response_schema=response_schema,
-            )
-        except TypeError:
-            raise
+            # Convert messages to LangChain format
+            langchain_messages = self._convert_messages(messages)
+
+            # Create a new instance with updated parameters if specified
+            llm = self.llm
+            if max_tokens is not None or temperature is not None:
+                llm = ChatGoogleGenerativeAI(
+                    model=self.config.model,
+                    temperature=temperature if temperature is not None else self.config.temperature,
+                    max_output_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
+                    google_api_key=self.config.api_key,
+                    top_p=self.config.top_p,
+                    top_k=self.config.top_k
+                )
+
+            # Get response from LangChain and return directly
+            response = llm.invoke(langchain_messages)
+            return response
+
         except Exception as e:
-            s = str(e).lower()
-            if "rate_limit" in s or "quota" in s:
+            if "rate_limit" in str(e).lower() or "quota" in str(e).lower():
                 raise GeminiRateLimitError("Rate limit exceeded")
-            raise GeminiError(f"Gemini API error: {e}")
+            raise GeminiError(f"Google Gemini API error: {str(e)}")
 
     def complete(
         self,
@@ -259,36 +234,86 @@ class GeminiProvider(BaseLLMProvider):
         *args,
         **kwargs
     ) -> str:
-        """Complete via chat with single user message."""
-        logger.debug(f"Complete: {len(prompt)} chars")
-        out = self.chat(
-            [{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            *args,
-            **kwargs,
-        )
-        logger.debug(f"Response: {len(out)} chars")
-        return out
+        """Complete text using chat API.
+
+        This is a compatibility method that converts a simple prompt to
+        chat format and uses the chat API.
+
+        Args:
+            prompt: Text prompt to complete
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            str: Completed text
+
+        Raises:
+            GeminiError: If completion fails
+        """
+        logger.debug(f"Text completion: {len(prompt)} chars")
+
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = self.chat(
+                messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                *args,
+                **kwargs
+            )
+            logger.debug(f"Response: {len(response)} chars")
+            return response
+        except Exception as e:
+            logger.error(f"Text completion failed: {str(e)}")
+            logger.error(f"Failed prompt: {prompt}")
+            logger.error(
+                f"Parameters - max_tokens: {max_tokens}, "
+                f"temperature: {temperature}"
+            )
+            raise GeminiError(f"Google Gemini API error: {str(e)}")
 
     def embed(self, text: str) -> List[float]:
-        """Not supported; use Vertex AI Embeddings."""
+        """Get embeddings from Google Gemini API.
+
+        Note: Google Gemini does not have a dedicated embedding endpoint.
+        This method raises NotImplementedError as embeddings are typically
+        handled through other Google services like Vertex AI.
+
+        Args:
+            text: Text to generate embeddings for
+
+        Returns:
+            List[float]: The embeddings for the text
+
+        Raises:
+            NotImplementedError: Embeddings not directly supported
+        """
         raise NotImplementedError(
-            "Gemini has no embedding endpoint. "
-            "Use Vertex AI Embeddings API.",
+            "Google Gemini does not provide a direct embedding endpoint. "
+            "Please use Vertex AI Embeddings API or other embedding services."
         )
 
     def list_models(self) -> List[str]:
-        """Return current recommended Gemini model names."""
-        return [
-            # Gemini 3 series (latest, preview)
-            "gemini-3-pro-preview",
-            "gemini-3-flash-preview",
-            # Gemini 2.5 series (stable, recommended)
-            "gemini-2.5-pro",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            # Gemini 2.0 series (previous generation)
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
+        """List available Google Gemini models.
+
+        Returns:
+            List[str]: List of available model names
+
+        Raises:
+            GeminiError: If model listing fails
+        """
+        # Common Gemini models
+        common_models = [
+            "gemini-pro",
+            "gemini-pro-vision",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gemini-2.0-flash-exp",
         ]
+        try:
+            logger.info("Returning common Gemini models")
+            return common_models
+        except Exception as e:
+            raise GeminiError(f"Failed to list models: {str(e)}")
