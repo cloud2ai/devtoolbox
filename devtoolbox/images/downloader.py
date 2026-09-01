@@ -12,6 +12,7 @@ from PIL import Image, UnidentifiedImageError
 from tenacity import (
     Retrying,
     stop_after_attempt,
+    stop_after_delay,
     wait_exponential,
     retry_if_exception_type
 )
@@ -62,6 +63,22 @@ IMAGE_DOWNLOAD_RETRY_MAX_WAIT = int(
     os.getenv("IMAGE_DOWNLOAD_RETRY_MAX_WAIT", "10")
 )
 
+# Wall-clock ceiling for all attempts on one image, in seconds.
+#
+# The attempt count alone does not bound how long an image can take: at 6
+# attempts, a host that always times out costs 6x10s of timeout plus 30s of
+# backoff, i.e. ~90s -- and with COLLECTOR_WORKERS = 2 and 5 images that is
+# ~270s for a single project, against a caller whose collection lock may be
+# an hour for a whole batch of projects. A host that is entirely unreachable
+# would then be able to push a batch past its deadline.
+#
+# Bounding the total keeps the win (several attempts against a host that
+# answers intermittently) without letting a dead host run away: whichever of
+# the two limits is hit first stops the retrying.
+IMAGE_DOWNLOAD_MAX_RETRY_SECONDS = int(
+    os.getenv("IMAGE_DOWNLOAD_MAX_RETRY_SECONDS", "60")
+)
+
 # Maximum width for images after conversion
 CONVERT_IMAGE_MAX_WIDTH = 1280
 
@@ -92,7 +109,8 @@ class ImageDownloader:
         search_keywords=None,
         compress=True,
         max_attempts=IMAGE_DOWNLOAD_MAX_ATTEMPTS,
-        download_timeout=IMAGE_DOWNLOAD_TIMEOUT
+        download_timeout=IMAGE_DOWNLOAD_TIMEOUT,
+        max_retry_seconds=IMAGE_DOWNLOAD_MAX_RETRY_SECONDS
     ):
         """Initialize the ImageDownloader with the specified parameters.
 
@@ -180,6 +198,7 @@ class ImageDownloader:
         self.compress = compress
         self.max_attempts = max_attempts
         self.download_timeout = download_timeout
+        self.max_retry_seconds = max_retry_seconds
 
         self.enable_search_download = enable_search_download
         self.search_keywords = search_keywords
@@ -264,7 +283,13 @@ class ImageDownloader:
             dict: Image information including content and hash.
         """
         retryer = Retrying(
-            stop=stop_after_attempt(self.max_attempts),
+            # Whichever limit is reached first wins: enough attempts for a
+            # host that answers intermittently, a wall-clock ceiling for one
+            # that does not answer at all.
+            stop=(
+                stop_after_attempt(self.max_attempts) |
+                stop_after_delay(self.max_retry_seconds)
+            ),
             wait=wait_exponential(
                 multiplier=1,
                 min=IMAGE_DOWNLOAD_RETRY_MIN_WAIT,

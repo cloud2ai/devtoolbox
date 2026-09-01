@@ -14,6 +14,7 @@ import requests
 
 from devtoolbox.images.downloader import (
     IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+    IMAGE_DOWNLOAD_MAX_RETRY_SECONDS,
     ImageDownloader,
 )
 
@@ -79,3 +80,25 @@ def test_non_image_content_type_is_not_retried():
 def test_default_attempts_come_from_the_module_constant():
     assert _downloader().max_attempts == IMAGE_DOWNLOAD_MAX_ATTEMPTS
     assert IMAGE_DOWNLOAD_MAX_ATTEMPTS >= 6
+
+
+def test_wall_clock_ceiling_stops_a_dead_host_early():
+    """
+    The attempt count alone does not bound elapsed time. A host that always
+    times out must not be able to spend max_attempts x timeout + backoff --
+    with COLLECTOR_WORKERS = 2 that is minutes per project, against callers
+    whose whole collection runs under one lock.
+    """
+    d = _downloader(max_attempts=50, max_retry_seconds=0)
+    with patch("devtoolbox.images.downloader.requests.get",
+               side_effect=requests.exceptions.ConnectTimeout) as get:
+        with pytest.raises(requests.exceptions.ConnectTimeout):
+            d._download_image(0, "https://example.invalid/a.png")
+    # stop_after_delay(0) trips immediately, so the 50 attempts never happen.
+    assert get.call_count == 1
+
+
+def test_ceiling_defaults_leave_room_for_several_attempts():
+    """The ceiling must not be so tight that it cancels the extra attempts."""
+    assert IMAGE_DOWNLOAD_MAX_RETRY_SECONDS >= 30
+    assert _downloader().max_retry_seconds == IMAGE_DOWNLOAD_MAX_RETRY_SECONDS
