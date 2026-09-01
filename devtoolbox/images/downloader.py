@@ -10,7 +10,7 @@ import imagehash
 import requests
 from PIL import Image, UnidentifiedImageError
 from tenacity import (
-    retry,
+    Retrying,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type
@@ -34,8 +34,33 @@ ASPECT_RATIO_RANGE = (0.5, 2.0)
 # Maximum number of images to download
 MAX_DOWNLOAD_IMAGE_NUM = 5
 
-# Timeout duration for image download requests
-IMAGE_DOWNLOAD_TIMEOUT = 10
+# Timeout duration for a single image download request, in seconds.
+IMAGE_DOWNLOAD_TIMEOUT = int(os.getenv("IMAGE_DOWNLOAD_TIMEOUT", "10"))
+
+# Attempts per image before giving up (tenacity counts the first try).
+#
+# This was a hardcoded 3, which is thin for a flaky CDN. Measured against
+# raw.githubusercontent.com from a mainland-China host, the same URL answers
+# roughly one request in three -- 200, ConnectionError, ConnectTimeout on
+# three back-to-back GETs. Three attempts then lose the image (2/3)^3 ~= 30%
+# of the time, and download_images() drops it quietly, so the caller cannot
+# tell a flaky host from an image that was never there.
+#
+# 6 attempts take that to (2/3)^6 ~= 9%, and 9 to ~3%. The cost of raising it
+# falls almost entirely on genuinely unreachable hosts: a 404 or a non-image
+# content-type returns without raising (see _download_image_once), so it is
+# never retried, and only real network errors pay the backoff.
+IMAGE_DOWNLOAD_MAX_ATTEMPTS = int(
+    os.getenv("IMAGE_DOWNLOAD_MAX_ATTEMPTS", "6")
+)
+
+# Exponential backoff bounds between attempts, in seconds.
+IMAGE_DOWNLOAD_RETRY_MIN_WAIT = int(
+    os.getenv("IMAGE_DOWNLOAD_RETRY_MIN_WAIT", "4")
+)
+IMAGE_DOWNLOAD_RETRY_MAX_WAIT = int(
+    os.getenv("IMAGE_DOWNLOAD_RETRY_MAX_WAIT", "10")
+)
 
 # Maximum width for images after conversion
 CONVERT_IMAGE_MAX_WIDTH = 1280
@@ -65,7 +90,9 @@ class ImageDownloader:
         remove_duplicate=True,
         enable_search_download=False,
         search_keywords=None,
-        compress=True
+        compress=True,
+        max_attempts=IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+        download_timeout=IMAGE_DOWNLOAD_TIMEOUT
     ):
         """Initialize the ImageDownloader with the specified parameters.
 
@@ -151,6 +178,8 @@ class ImageDownloader:
         self.use_cache = use_cache
         self.remove_duplicate = remove_duplicate
         self.compress = compress
+        self.max_attempts = max_attempts
+        self.download_timeout = download_timeout
 
         self.enable_search_download = enable_search_download
         self.search_keywords = search_keywords
@@ -219,18 +248,41 @@ class ImageDownloader:
 
         return results
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((
-            UnidentifiedImageError,
-            requests.exceptions.Timeout,
-            requests.exceptions.RequestException
-        )),
-        reraise=True
-    )
     def _download_image(self, idx, image_url):
-        """Download a single image with automatic retry mechanism.
+        """Download a single image, retrying on transient network errors.
+
+        The retry policy is per-instance rather than a class decorator so a
+        caller on a flaky network can widen it without changing it for every
+        other user of this class. See IMAGE_DOWNLOAD_MAX_ATTEMPTS for why the
+        default is what it is.
+
+        Args:
+            idx (int): Index of the image in the list.
+            image_url (str): URL of the image to download.
+
+        Returns:
+            dict: Image information including content and hash.
+        """
+        retryer = Retrying(
+            stop=stop_after_attempt(self.max_attempts),
+            wait=wait_exponential(
+                multiplier=1,
+                min=IMAGE_DOWNLOAD_RETRY_MIN_WAIT,
+                max=IMAGE_DOWNLOAD_RETRY_MAX_WAIT
+            ),
+            retry=retry_if_exception_type((
+                UnidentifiedImageError,
+                requests.exceptions.Timeout,
+                requests.exceptions.RequestException
+            )),
+            reraise=True
+        )
+        return retryer(self._download_image_once, idx, image_url)
+
+    def _download_image_once(self, idx, image_url):
+        """One download attempt. Raises on transient errors so the caller's
+        retryer can act; returns an empty result for permanent ones (a
+        non-image content type, undecodable bytes) so they are not retried.
 
         Args:
             idx (int): Index of the image in the list.
@@ -256,7 +308,7 @@ class ImageDownloader:
                 save_content = base64.b64decode(image_data)
             else:
                 response = requests.get(
-                    image_url, timeout=IMAGE_DOWNLOAD_TIMEOUT)
+                    image_url, timeout=self.download_timeout)
                 # Check content type
                 content_type = response.headers.get('content-type', '')
                 if not content_type.startswith('image/'):
@@ -465,7 +517,7 @@ class ImageDownloader:
                     save_content = base64.b64decode(image_data)
                 else:
                     response = requests.get(
-                        image_url, timeout=IMAGE_DOWNLOAD_TIMEOUT)
+                        image_url, timeout=self.download_timeout)
                     save_content = response.content
 
                 if image_url.endswith('.svg'):
