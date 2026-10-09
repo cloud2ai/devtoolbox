@@ -329,6 +329,26 @@ However, as I worked on more and more projects, I realized that I hadn't properl
      --search-keywords "nature landscape"
    ```
 
+   Applications that already fetched image bytes can process them without
+   making another network request or writing a temporary file:
+
+   ```python
+   from devtoolbox.images.processing import (
+       ImageRejected,
+       detect_image_mime,
+       inspect_image_bytes,
+       normalize_image_bytes,
+   )
+
+   mime_type = detect_image_mime(image_bytes)
+   info = inspect_image_bytes(image_bytes)  # dimensions and perceptual hash
+   webp_bytes = normalize_image_bytes(image_bytes, output_format="WEBP")
+   ```
+
+   `ImageRejected` means the input is invalid or fails the requested image
+   policy. Conversion failures raise `ImageProcessingError`. Fetching, caching,
+   deduplication records, and storage remain the caller's responsibility.
+
    **Markdown Processing**
    ```bash
    # Download images from markdown file and replace remote URLs with local paths
